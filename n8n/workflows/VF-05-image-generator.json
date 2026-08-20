@@ -1,0 +1,103 @@
+{
+  "name": "VF-05 Image Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vf-05-image",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 240],
+      "id": "node-vf05-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    scene_id: body.scene_id,\n    prompt: body.prompt || '',\n    aspectRatio: body.aspectRatio || '9:16',\n    characterKey: body.characterKey || null,\n    model: 'gemini-3.1-flash-image'\n  }\n};"
+      },
+      "name": "Parse Scene Image Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 240],
+      "id": "node-vf05-parse"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_img_\" + $json.job_id + \"_\" + $json.scene_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"media.image_generating\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"IMAGE_GENERATION\",\n  \"progress\": 70,\n  \"message\": \"جاري توليد الصورة الذكية للمشهد عبر Gemini Image\"\n}"
+      },
+      "name": "Notify Image Generation Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 240],
+      "id": "node-vf05-notify"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/media",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_img_done_\" + $json.scene_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"scene_id\": $json.scene_id,\n  \"stage\": \"IMAGE_GENERATION\",\n  \"progress\": 75,\n  \"media_type\": \"IMAGE\",\n  \"scene_media_state\": \"READY\",\n  \"message\": \"تم توليد وتخزين صورة المشهد بنجاح\"\n}"
+      },
+      "name": "Persist Image Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 240],
+      "id": "node-vf05-persist"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [{ "node": "Parse Scene Image Request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Scene Image Request": {
+      "main": [
+        [{ "node": "Notify Image Generation Start", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notify Image Generation Start": {
+      "main": [
+        [{ "node": "Persist Image Ingest", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

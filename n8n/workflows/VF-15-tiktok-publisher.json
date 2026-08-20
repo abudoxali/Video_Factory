@@ -1,0 +1,71 @@
+{
+  "name": "VF-15 TikTok Publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vf-15-tiktok-publisher",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 240],
+      "id": "node-vf15-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    publication_id: body.publication_id,\n    video_id: body.video_id,\n    platform: 'TIKTOK',\n    status: 'PROCESSING',\n    message: 'جاري رفع مقطع الفيديو إلى تيك توك عبر Content Posting API'\n  }\n};"
+      },
+      "name": "Parse TikTok Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 240],
+      "id": "node-vf15-parse"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_tt_\" + $json.publication_id + \"_\" + Date.now(),\n  \"job_id\": \"job_pub_\" + $json.publication_id,\n  \"event\": \"publication.processing\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"PUBLISHING\",\n  \"progress\": 97,\n  \"message\": $json.message\n}"
+      },
+      "name": "Notify TikTok Progress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 240],
+      "id": "node-vf15-notify"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [{ "node": "Parse TikTok Task", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse TikTok Task": {
+      "main": [
+        [{ "node": "Notify TikTok Progress", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

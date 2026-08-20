@@ -1,0 +1,118 @@
+{
+  "name": "VF-01 AI Director",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vf-01-director",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 240],
+      "id": "node-vf01-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || body,\n    prompt_version: 'director/v1'\n  }\n};"
+      },
+      "name": "Parse & Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 240],
+      "id": "node-vf01-parse"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_dir_start_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"planning.director_started\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 15,\n  \"message\": \"جاري تحليل فكرة الفيديو وإعداد التوجيه الإبداعي بواسطة AI Director\"\n}"
+      },
+      "name": "Notify Director Stage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 240],
+      "id": "node-vf01-notify"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare AI Director Structured Prompt Parameters\nconst input = $input.item.json;\nconst req = input.request || {};\n\nreturn {\n  json: {\n    job_id: input.job_id,\n    video_id: input.video_id,\n    stage: 'AI_DIRECTOR',\n    brief: {\n      workingTitle: req.title || 'فيديو جديد',\n      coreIdea: req.prompt || '',\n      objective: 'إنتاج محتوى جذاب وتفاعلي على منصة ' + (req.platform || 'tiktok'),\n      targetAudience: 'جمهور المنصات الرقمية ورواد المحتوى العربي',\n      platform: req.platform || 'tiktok',\n      videoType: req.type || 'short',\n      targetDurationSeconds: req.duration_seconds || 30,\n      language: req.language || 'ar',\n      tone: 'حماسي واحترافي ومباشر',\n      contentAngle: 'طرح مشوق يركز على الفائدة السريعة',\n      hookStrategy: 'جملة افتتاحية قوية تجذب الانتباه في أول 3 ثوانٍ',\n      narrativeStyle: 'مشكلة -> تفصيل -> دعوة للتفاعل',\n      visualDirection: 'لقطات ديناميكية عصرية مع نصوص توضيحية جريئة',\n      pacing: 'fast',\n      keyPoints: ['الجاذبية', 'الوضوح', 'الدعوة للمشاركة'],\n      constraints: ['الالتزام بالمدة المحددة بدقة'],\n      requiresResearch: false\n    }\n  }\n};"
+      },
+      "name": "Build Creative Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 240],
+      "id": "node-vf01-build-brief"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"AI_DIRECTOR\",\n  \"brief\": $json.brief,\n  \"progress\": 25,\n  \"message\": \"تم إعداد التوجيه الإبداعي بنجاح\"\n}"
+      },
+      "name": "Persist Brief To App",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 240],
+      "id": "node-vf01-persist"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [{ "node": "Parse & Validate Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse & Validate Input": {
+      "main": [
+        [{ "node": "Notify Director Stage", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notify Director Stage": {
+      "main": [
+        [{ "node": "Build Creative Brief", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Creative Brief": {
+      "main": [
+        [{ "node": "Persist Brief To App", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "event_id": "evt_sample_callback_98765",
+  "job_id": "job_sample_123456",
+  "event": "job.progress",
+  "status": "PROCESSING",
+  "stage": "CORE_TEST",
+  "progress": 70,
+  "message": "تم اختبار الاتصال والتكامل الأساسي بنجاح",
+  "metadata": {
+    "node": "Deterministic Wait",
+    "execution_time_ms": 2100
+  }
+}

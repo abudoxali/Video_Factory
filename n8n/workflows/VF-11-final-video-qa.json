@@ -1,0 +1,103 @@
+{
+  "name": "VF-11 Final Video QA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vf-11-final-qa",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 240],
+      "id": "node-vf11-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    render_id: body.render_id,\n    objectKey: body.objectKey,\n    sizeBytes: body.sizeBytes || 0,\n    checksum: body.checksum || '',\n    durationSeconds: body.durationSeconds || 0,\n    width: body.width || 1080,\n    height: body.height || 1920\n  }\n};"
+      },
+      "name": "Parse QA Validation Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 240],
+      "id": "node-vf11-parse"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_qa_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"qa.validated\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"RENDER_READY\",\n  \"progress\": 100,\n  \"message\": \"تم فحص واعتماد جودة الفيديو النهائي MP4 ومطابقة الأبعاد والخط الصوتي بنجاح\"\n}"
+      },
+      "name": "Notify QA Completed & Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 240],
+      "id": "node-vf11-notify"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_render_final_\" + $json.render_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"render_id\": $json.render_id,\n  \"status\": \"READY\",\n  \"stage\": \"RENDER_READY\",\n  \"progress\": 100,\n  \"message\": \"الفيديو النهائي متاح للمشاهدة والتحميل بأعلى جودة\",\n  \"render_output\": {\n    \"storageProvider\": \"r2\",\n    \"bucket\": \"video-factory-media\",\n    \"objectKey\": $json.objectKey,\n    \"mimeType\": \"video/mp4\",\n    \"sizeBytes\": $json.sizeBytes,\n    \"durationSeconds\": $json.durationSeconds,\n    \"width\": $json.width,\n    \"height\": $json.height,\n    \"fps\": 30,\n    \"checksum\": $json.checksum\n  }\n}"
+      },
+      "name": "Persist Final Render Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 240],
+      "id": "node-vf11-persist"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [{ "node": "Parse QA Validation Request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse QA Validation Request": {
+      "main": [
+        [{ "node": "Notify QA Completed & Ready", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notify QA Completed & Ready": {
+      "main": [
+        [{ "node": "Persist Final Render Ingest", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

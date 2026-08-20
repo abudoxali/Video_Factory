@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "N8nCallbackPayload",
+  "type": "object",
+  "required": ["version", "event_id", "job_id", "event", "status", "stage", "progress"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "event_id": {
+      "type": "string",
+      "description": "Globally unique event ID used for idempotency"
+    },
+    "job_id": {
+      "type": "string",
+      "description": "Target video job ID"
+    },
+    "event": {
+      "type": "string",
+      "description": "Event name, e.g. job.progress, job.completed, job.failed"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PROCESSING", "COMPLETED", "FAILED", "CANCELLED"]
+    },
+    "stage": {
+      "type": "string",
+      "description": "Internal canonical stage identifier"
+    },
+    "progress": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "message": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

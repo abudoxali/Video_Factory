@@ -1,0 +1,17 @@
+{
+  "name": "video-factory-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @video-factory/web dev",
+    "build": "pnpm -r --sort run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm --filter @video-factory/web lint",
+    "db:generate": "pnpm --filter @video-factory/database db:generate",
+    "db:migrate": "pnpm --filter @video-factory/database db:migrate"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

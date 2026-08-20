@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "job_id": "job_sample_123456",
+  "video_id": "vid_sample_abcdef",
+  "request": {
+    "prompt": "فيديو قصير يشرح أحدث ميزات الذكاء الاصطناعي في إنتاج المحتوى الرقمي",
+    "type": "short",
+    "duration_seconds": 30,
+    "language": "ar",
+    "platform": "tiktok",
+    "aspect_ratio": "9:16"
+  }
+}
