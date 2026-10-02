@@ -1,7 +1,25 @@
+import fs from 'fs';
 import { describe, it, expect } from 'vitest';
 import { RenderService } from '../src/render/RenderService';
+import { RemotionRenderEngine, type RenderEngine } from '../src/render/engine';
 import { MockStorageProvider } from '@video-factory/providers';
 import type { RenderManifest } from '@video-factory/contracts';
+
+/**
+ * Explicit test double for the render engine. Writes a minimal deterministic
+ * file so RenderService orchestration (validation → render → checksum →
+ * upload → READY) can be exercised without a real Remotion toolchain.
+ * Never used by production code paths.
+ */
+class ExplicitTestRenderEngine implements RenderEngine {
+  public readonly name = 'explicit-test-engine';
+  public async render(manifest: RenderManifest, outputPath: string): Promise<void> {
+    const payload = Buffer.from(
+      `TEST_RENDER_OUTPUT:${manifest.renderId}:${manifest.videoId}:${manifest.composition.width}x${manifest.composition.height}@${manifest.composition.fps}fps`
+    );
+    fs.writeFileSync(outputPath, payload);
+  }
+}
 
 describe('Render Worker & RenderService Suite (Phase 04)', () => {
   const validManifest: RenderManifest = {
@@ -136,11 +154,12 @@ describe('Render Worker & RenderService Suite (Phase 04)', () => {
     expect(validation.error).toContain('STOCK');
   });
 
-  it('executes video rendering, validates output MP4, and uploads to R2', async () => {
+  it('executes video rendering via explicit engine, validates output file, and uploads to R2', async () => {
     const storage = new MockStorageProvider();
     const service = new RenderService({
       storageProvider: storage,
       persistToDb: false,
+      renderEngine: new ExplicitTestRenderEngine(),
     });
 
     const result = await service.renderVideo({
@@ -160,5 +179,54 @@ describe('Render Worker & RenderService Suite (Phase 04)', () => {
     // Verify file exists in mock R2 storage
     const head = await storage.head(result.objectKey!);
     expect(head.exists).toBe(true);
+  });
+
+  it('fails closed with RENDER_ENGINE_NOT_CONFIGURED when no real engine is wired', async () => {
+    const storage = new MockStorageProvider();
+    const service = new RenderService({
+      storageProvider: storage,
+      persistToDb: false,
+      // Real engine, but pointed at a nonexistent entry point — deterministic
+      // NOT_CONFIGURED path without launching a browser.
+      renderEngine: new RemotionRenderEngine({
+        entryPoint: 'C:\\nonexistent\\remotion-entry.tsx',
+      }),
+    });
+
+    const result = await service.renderVideo({
+      manifest: validManifest,
+      userId: 'usr_test',
+      projectId: 'prj_test',
+      version: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('FAILED');
+    expect(result.error?.code).toBe('RENDER_ENGINE_NOT_CONFIGURED');
+  });
+
+  it('propagates engine failures as FAILED renders without READY state', async () => {
+    class FailingEngine implements RenderEngine {
+      public readonly name = 'failing-test-engine';
+      async render(): Promise<void> {
+        throw new Error('engine exploded');
+      }
+    }
+
+    const storage = new MockStorageProvider();
+    const service = new RenderService({
+      storageProvider: storage,
+      persistToDb: false,
+      renderEngine: new FailingEngine(),
+    });
+
+    const result = await service.renderVideo({
+      manifest: validManifest,
+      version: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('FAILED');
+    expect(result.error?.code).toBe('RENDER_ENGINE_ERROR');
   });
 });

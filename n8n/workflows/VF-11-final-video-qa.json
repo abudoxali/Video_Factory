@@ -8,33 +8,116 @@
         "responseMode": "onReceived",
         "options": {}
       },
+      "id": "node-vf11-webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [180, 240],
-      "id": "node-vf11-webhook"
+      "position": [
+        180,
+        240
+      ],
+      "webhookId": "vf-11-final-qa"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    render_id: body.render_id,\n    objectKey: body.objectKey,\n    sizeBytes: body.sizeBytes || 0,\n    checksum: body.checksum || '',\n    durationSeconds: body.durationSeconds || 0,\n    width: body.width || 1080,\n    height: body.height || 1920\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id && !body.render_id) throw new Error('video_id or render_id is required');\nreturn {\n  json: {\n    video_id: body.video_id || null,\n    job_id: body.job_id || '',\n    publication_id: body.publication_id || null,\n    render_id: body.render_id || null,\n    scene_id: body.scene_id || null,\n    platforms: body.platforms || null,\n    account_ids: body.account_ids || null,\n    metadata: body.metadata || null,\n    received_at: new Date().toISOString()\n  }\n};"
       },
-      "name": "Parse QA Validation Request",
+      "id": "node-vf11-validate",
+      "name": "Validate & Authenticate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 240],
-      "id": "node-vf11-parse"
+      "position": [
+        400,
+        240
+      ]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "method": "GET",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/render/status",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "video_id",
+              "value": "={{ $json.video_id || \"\" }}"
+            },
+            {
+              "name": "render_id",
+              "value": "={{ $json.render_id || \"\" }}"
+            },
+            {
+              "name": "verify_storage",
+              "value": "=1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "onError": "continueRegularOutput"
+      },
+      "id": "node-vf11-status",
+      "name": "QA: Verify Render Truth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.success === true && $json.data && $json.data.verified === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-vf11-passed",
+      "name": "QA Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL || 'http://localhost:5678' }}/webhook/vf-12-distribution-coordinator",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -43,61 +126,73 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_qa_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"qa.validated\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"RENDER_READY\",\n  \"progress\": 100,\n  \"message\": \"تم فحص واعتماد جودة الفيديو النهائي MP4 ومطابقة الأبعاد والخط الصوتي بنجاح\"\n}"
-      },
-      "name": "Notify QA Completed & Ready",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [620, 240],
-      "id": "node-vf11-notify"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/render",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
+        "jsonBody": "={\n  \"video_id\": $('Validate & Authenticate').item.json.video_id || '',\n  \"job_id\": $('Validate & Authenticate').item.json.job_id || '',\n  \"render_id\": $json.data.render.id,\n  \"webhook_secret\": \"{{ $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET }}\"\n}",
+        "options": {
+          "timeout": 15000
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_render_final_\" + $json.render_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"render_id\": $json.render_id,\n  \"status\": \"READY\",\n  \"stage\": \"RENDER_READY\",\n  \"progress\": 100,\n  \"message\": \"الفيديو النهائي متاح للمشاهدة والتحميل بأعلى جودة\",\n  \"render_output\": {\n    \"storageProvider\": \"r2\",\n    \"bucket\": \"video-factory-media\",\n    \"objectKey\": $json.objectKey,\n    \"mimeType\": \"video/mp4\",\n    \"sizeBytes\": $json.sizeBytes,\n    \"durationSeconds\": $json.durationSeconds,\n    \"width\": $json.width,\n    \"height\": $json.height,\n    \"fps\": 30,\n    \"checksum\": $json.checksum\n  }\n}"
+        "onError": "continueRegularOutput"
       },
-      "name": "Persist Final Render Ingest",
+      "id": "node-vf11-trigger-dist",
+      "name": "Trigger Distribution Coordinator",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [840, 240],
-      "id": "node-vf11-persist"
+      "position": [
+        1120,
+        140
+      ]
     }
   ],
   "connections": {
     "Webhook Trigger": {
       "main": [
-        [{ "node": "Parse QA Validation Request", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate & Authenticate",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Parse QA Validation Request": {
+    "Validate & Authenticate": {
       "main": [
-        [{ "node": "Notify QA Completed & Ready", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "QA: Verify Render Truth",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Notify QA Completed & Ready": {
+    "QA: Verify Render Truth": {
       "main": [
-        [{ "node": "Persist Final Render Ingest", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "QA Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Passed?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Distribution Coordinator",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "versionId": "vf-11-v3",
+  "id": "VF11FinalVideoQa",
+  "tags": []
 }

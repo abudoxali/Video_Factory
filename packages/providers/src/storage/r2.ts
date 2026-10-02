@@ -8,7 +8,15 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { StorageProvider, StorageProviderConfig } from './types';
-import type { StoragePutOptions, StoragePutResult, PresignedUrlResult } from '@video-factory/contracts';
+import {
+  isLocalhostUrl,
+  isPlaceholderValue,
+  isProductionRuntime,
+  ProductionConfigError,
+  type StoragePutOptions,
+  type StoragePutResult,
+  type PresignedUrlResult,
+} from '@video-factory/contracts';
 
 export class CloudflareR2Provider implements StorageProvider {
   public readonly name = 'r2';
@@ -23,17 +31,37 @@ export class CloudflareR2Provider implements StorageProvider {
     const endpoint =
       config?.endpoint ||
       process.env.R2_ENDPOINT ||
-      (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : 'https://dummy-r2-endpoint.local');
+      (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : '');
 
     this.defaultBucket = config?.bucketName || process.env.R2_BUCKET_NAME || 'video-factory-media';
     this.publicBaseUrl = config?.publicBaseUrl || process.env.R2_PUBLIC_BASE_URL;
 
+    if (isProductionRuntime()) {
+      // Fail closed in production: real R2 credentials and endpoint are mandatory.
+      const missing = [
+        ['R2_ACCOUNT_ID', accountId],
+        ['R2_ACCESS_KEY_ID', accessKeyId],
+        ['R2_SECRET_ACCESS_KEY', secretAccessKey],
+        ['R2_BUCKET_NAME', this.defaultBucket],
+      ]
+        .filter(([, v]) => isPlaceholderValue(v))
+        .map(([n]) => n);
+      if (!endpoint || isLocalhostUrl(endpoint)) {
+        missing.push('R2_ENDPOINT');
+      }
+      if (missing.length > 0) {
+        throw new ProductionConfigError(
+          `Cloudflare R2 storage is not configured for production — missing/invalid: ${missing.join(', ')}`
+        );
+      }
+    }
+
     this.client = new S3Client({
       region: config?.region || 'auto',
-      endpoint,
+      endpoint: endpoint || 'http://localhost',
       credentials: {
-        accessKeyId: accessKeyId || 'dummy-key',
-        secretAccessKey: secretAccessKey || 'dummy-secret',
+        accessKeyId: accessKeyId || 'dev-placeholder-key',
+        secretAccessKey: secretAccessKey || 'dev-placeholder-secret',
       },
     });
   }

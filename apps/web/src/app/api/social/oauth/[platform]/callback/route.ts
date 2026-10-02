@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublishingProvider, encryptToken } from '@video-factory/providers';
 import { saveSocialAccountTransaction } from '@video-factory/database';
 import { SocialPlatformEnum, type SocialPlatform } from '@video-factory/contracts';
+import { verifyOAuthState } from '@/lib/oauth-state';
 
 export async function GET(
   request: NextRequest,
@@ -31,24 +32,28 @@ export async function GET(
   const platform = platformResult.data as SocialPlatform;
 
   try {
-    // 1. Decode and Validate State
-    const stateJson = Buffer.from(state, 'base64url').toString('utf8');
-    const statePayload = JSON.parse(stateJson);
-
-    // Verify age (max 15 minutes)
-    if (Date.now() - statePayload.createdAt > 15 * 60 * 1000) {
+    // 1. Verify server-authenticated state: HMAC signature, schema, age,
+    //    and platform binding. Tampered or unsigned states are rejected.
+    const stateCheck = verifyOAuthState(state, platform);
+    if (!stateCheck.ok) {
+      console.warn(`[API_OAUTH_CALLBACK_STATE_REJECTED] reason=${stateCheck.error}`);
       return NextResponse.redirect(
-        new URL('/settings/social?status=error&message=انتهت_مهلة_جلسة_الربط', request.nextUrl.origin)
+        new URL('/settings/social?status=error&message=جلسة_الربط_غير_صالحة_أو_منتهية', request.nextUrl.origin)
       );
     }
 
+    const statePayload = stateCheck.payload;
     const userId = statePayload.userId;
     const origin = request.nextUrl.origin || 'http://localhost:3000';
     const redirectUri = `${origin}/api/social/oauth/${platform.toLowerCase()}/callback`;
 
-    // 2. Exchange Code for Tokens Server-Side
+    // 2. Exchange Code for Tokens Server-Side (with PKCE verifier if issued)
     const provider = createPublishingProvider(platform);
-    const tokenResponse = await provider.exchangeCodeForTokens(code, redirectUri);
+    const tokenResponse = await provider.exchangeCodeForTokens(
+      code,
+      redirectUri,
+      statePayload.codeVerifier
+    );
 
     // 3. Encrypt Tokens with Authenticated AES-256-GCM
     const accessTokenEncrypted = encryptToken(tokenResponse.accessToken);

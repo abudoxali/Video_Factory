@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getAuthenticatedUser } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rate-limiter';
+import { createOAuthState } from '@/lib/oauth-state';
 import { createPublishingProvider } from '@video-factory/providers';
 import { SocialPlatformEnum, type SocialPlatform, getPlatformLaunchStatus } from '@video-factory/contracts';
 
@@ -46,21 +47,28 @@ export async function GET(
     const origin = request.nextUrl.origin || 'http://localhost:3000';
     const redirectUri = `${origin}/api/social/oauth/${platform.toLowerCase()}/callback`;
 
-    // Secure state with HMAC payload
-    const nonce = crypto.randomBytes(16).toString('hex');
-    const statePayload = JSON.stringify({
+    // PKCE verifier for platforms that support it (TikTok Content Posting API)
+    let codeVerifier: string | undefined;
+    let codeChallenge: string | undefined;
+    if (platform === 'TIKTOK') {
+      codeVerifier = crypto.randomBytes(32).toString('base64url');
+      codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+    }
+
+    // Server-authenticated state: base64url(payload) + HMAC signature
+    const state = createOAuthState({
       userId: user.userId,
       platform,
-      nonce,
-      createdAt: Date.now(),
+      redirectUri,
+      codeVerifier,
     });
-    const state = Buffer.from(statePayload).toString('base64url');
 
     const provider = createPublishingProvider(platform);
     const authUrl = await provider.getAuthUrl({
       userId: user.userId,
       redirectUri,
       state,
+      codeChallenge,
     });
 
     return NextResponse.json({

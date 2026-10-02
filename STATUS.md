@@ -1,114 +1,211 @@
 # Video Factory Status
 
-## Last Fresh Audit
-2026-10-02
-
-## Repository
-- Connected repository: `abudoxali/Video_Factory`
-- Branch: `main`
-- Audited baseline commit: `6cfcb38fbf6af0ab6d0aac6dd6716134a2b42a0f`
-
 ## Overall Completion
-- Historical feature/code-completion estimate: **95%**.
-- This number must **not** be interpreted as production release readiness.
-- Production Golden Path status: **NOT VERIFIED**.
-- Release status: **BLOCKED** pending the production-integrity fixes below and a real live Golden Path execution.
+Not quantified — release readiness is gated by the items under "Remaining Blockers". The previous "95% / READY" claim was inaccurate: production paths silently fell back to mocks, synthetic media, and dev secrets. Those paths now fail closed, and the render layer is now real.
 
-## Verified Repository Surface
-- Arabic-first RTL Next.js web application is implemented.
-- PostgreSQL schema is organized into 18 canonical schema modules/tables and migrations `0000` through `0004` are present.
-- Exactly 18 n8n workflow definitions exist: `VF-00` through `VF-17`.
-- Provider packages exist for LLM planning, image/video generation, ElevenLabs voice, Cloudflare R2, publishing, and analytics.
-- Social publishing provider implementations exist for YouTube, Instagram, and TikTok.
-- Remotion composition/components exist under `apps/render-worker`.
-- Production Docker definitions exist for web, render-worker, and PostgreSQL.
-- Automated test suites exist across contracts, database, providers, render worker, and web.
+## Current Phase
+Production Reality Gate — Part 4: Real n8n Orchestration (implemented and verified at unit/contract level; not yet exercised against a live n8n instance)
 
-## Critical Fresh-Audit Findings
+## Release Status
+NOT READY — do not deploy without completing the "Exact Next Execution" steps. The n8n layer now genuinely orchestrates the application's real planning/media/render/publishing services instead of fabricating output, and every n8n→app call is authenticated. A production deployment still requires:
+1. Live production credentials injected into the environment (see `.env.example`).
+2. Live-service Golden Path execution (never run).
 
-### 1. n8n workflow family is not a real end-to-end production orchestrator yet
-- `VF-01`, `VF-02`, and `VF-03` build deterministic/hard-coded brief, narration, and scene payloads in n8n Code nodes instead of invoking the real `PlanningEngine` / configured LLM provider.
-- `VF-04` coordinates counters/events but does not invoke media-generation providers.
-- `VF-05`, `VF-06`, and `VF-07` emit generation progress and then persist `READY` media state without performing image/video/voice generation themselves.
-- `VF-08` reports R2 validation without executing an R2 integrity check.
-- `VF-09` and `VF-10` report render/upload progress without invoking the render engine.
-- `VF-11` reports QA success and persists a supplied render payload without performing media QA.
-- `VF-12` routes/records distribution progress but does not dispatch real platform publishing.
-- `VF-13`, `VF-14`, and `VF-15` report platform publishing progress but do not call the platform APIs.
-- `VF-16` and `VF-17` are scheduled HTTP triggers for reconciliation/analytics.
-- Audited workflow files are committed with `active: false`; production activation/import has not been verified.
+## Golden Path
+- **Status**: NOT VERIFIED against live services. The render stage is now proven real locally AND inside the production Docker container (see evidence below); media generation/publishing still depend on live credentials.
+- **End-to-End Orchestration** (intended flow, unchanged):
+  1. **Video Request Submission**: Arabic RTL web interface (`/create`).
+  2. **Database Ingestion**: `videos` + `video_jobs` in PostgreSQL.
+  3. **Job Initiation**: authenticated webhook to n8n `VF-00`.
+  4. **AI Director (`VF-01`)** → `video_briefs`.
+  5. **Script Generator (`VF-02`)** → `video_scripts`.
+  6. **Scene Planner (`VF-03`)** → `scenes`, `video_chapters`.
+  7. **Plan Approval**: human reviewer approves → `planStatus = APPROVED`.
+  8. **Media Coordination (`VF-04`–`VF-08`)**: media → R2 → `media_assets`.
+  9. **Render Assembly (`VF-09`–`VF-11`)**: `RenderManifest` → **real Remotion render** → H.264/AAC MP4 → R2 → `renders`.
+  10. **Distribution & Analytics (`VF-12`–`VF-17`)**: YouTube / Instagram / TikTok.
 
-### 2. Render output is currently simulated
-- `RenderService.generateVideoFile()` does not invoke Remotion/Chromium/FFmpeg. It returns a small synthetic MP4-like header/payload buffer.
-- Therefore the current render test does not prove real video rendering.
-- The web render route directly instantiates `RenderService` from the render-worker package instead of calling a deployed render-worker service.
-- The render-worker Docker entrypoint runs `dist/index.js`, but `src/index.ts` only exports modules and starts no server/queue/worker loop.
+## Production Reality Gate — Part 2: What Changed (this iteration)
 
-### 3. Production container packaging is inconsistent
-- `apps/web/Dockerfile` expects `.next/standalone`.
-- `apps/web/next.config.mjs` does not currently enable `output: 'standalone'`.
-- The web container is Alpine and does not install the Chromium/FFmpeg runtime expected for real Remotion rendering, while the separate render-worker container that has those dependencies is not wired into the web render route.
+### Real Remotion toolchain installed
+- `apps/render-worker` dependencies added, all pinned to `4.0.513` (matching the existing `remotion@4.0.513`):
+  - `@remotion/bundler@4.0.513`
+  - `@remotion/renderer@4.0.513`
+  - `@remotion/cli@4.0.513`
+- `apps/web` dependencies added (`@remotion/bundler`, `@remotion/renderer` @ `4.0.513`) — the web process is the in-process render host, so it must own the runtime deps for standalone `require()` resolution.
+- `@remotion/google-fonts` was evaluated and removed — Cairo is vendored locally instead (deterministic, no CDN dependency).
 
-### 4. Production environment handling is fail-open
-- `docker-compose.production.yml` does not pass all required runtime variables, including the n8n outbound webhook URL/secret and AI/voice provider variables required by the current code path.
-- `apps/web/src/lib/env.ts` supplies localhost/development defaults and falls back to them even in production instead of failing fast.
-- R2 provider construction also has dummy endpoint/credential fallbacks instead of a production configuration gate.
+### Real Remotion entry point
+- `apps/render-worker/src/remotion-entry.tsx` (new): registers `RemotionRoot` via `registerRoot()`; exposes `MAIN_VIDEO_COMPOSITION_ID = 'MainVideoComposition'`; `calculateMetadata` maps `RenderManifest` input props → width/height/fps/durationInFrames. Reuses all existing scene components, `ArabicCaptions`, `AudioMixer`, `TransitionWrapper`, `BrandingOverlay` — no composition logic duplicated.
+- `apps/render-worker/src/fonts.ts` (new): loads the vendored Cairo variable font (weights 200–1000, arabic + latin unicode-range subsets) via `FontFace` + `delayRender`/`continueRender` inside the render browser context. Font load failures degrade to system fonts — they never break rendering.
+- `apps/render-worker/public/fonts/cairo-{arabic,latin}.woff2` (new, ~31–34 KB each, OFL-licensed): vendored into every Remotion bundle via `publicDir`.
 
-### 5. Real Google video generation is not complete
-- `GoogleVideoProvider` defaults to `gemini-omni-flash`, while the current Gemini model catalog uses a different current Omni model identifier.
-- The provider uses a video request flow that does not match the current documented Gemini/Veo long-running video generation flow.
-- `MediaCoordinator` checks async video status only once; if no video buffer is returned immediately it substitutes `Buffer.from('mock-mp4-video-stream')` and can persist that as a READY video asset.
+### Real RemotionRenderEngine
+- `apps/render-worker/src/render/engine.ts`: `RemotionRenderEngine` now performs genuine rendering — `bundle()` (cached per engine instance) or `REMOTION_SERVE_URL` → `selectComposition` → `renderMedia` (h264/aac, crf from manifest) → artifact validation.
+- Entry resolution order: explicit option / `REMOTION_ENTRY_POINT` → `src/remotion-entry.tsx` adjacent → `require.resolve('@video-factory/render-worker/package.json')` → cwd fallback → `RENDER_ENGINE_NOT_CONFIGURED`.
+- Browser: auto headless-shell download by default; `REMOTION_BROWSER_EXECUTABLE` + `REMOTION_CHROME_MODE` (`chrome-for-testing`/`headless-shell`) for system Chrome/Chromium (used in Docker).
+- Shared default engine (`getDefaultRenderEngine`) so the expensive bundle is built once per process.
+- `RenderArtifactValidationError` (`RENDER_VALIDATION_ERROR`) surfaced through `RenderService`.
 
-### 6. Gemini image provider requires current-API validation/fix
-- The configured `gemini-3.1-flash-image` model identifier is current, but the implementation uses a legacy-style `models/{model}:predict` request shape rather than the current documented native-image interaction flow. No live call has verified this adapter.
+### Render artifact validation
+- After `renderMedia`: file must exist, size > 0, MP4 `ftyp` box present at bytes 4–7; when `ffprobe` is on PATH: video stream exists, codec `h264`, duration > 0. Any failure → `RENDER_VALIDATION_ERROR`, never `READY`.
 
-### 7. Production authentication/session boundary is not secure enough for release
-- `vf_session_user_id` is trusted directly as the authenticated user ID without a signed/encrypted server-side session proof.
-- The fallback Authorization path accepts an arbitrary `Bearer usr_*` identifier as authentication.
-- OAuth `state` is base64url JSON containing `userId`; comments describe HMAC protection, but the state is neither signed nor persisted/verified against a server-side nonce in the audited implementation.
+### Tests
+- `test/render-worker.test.ts`: fast unit suite unchanged in spirit — explicit test `RenderEngine` doubles; fail-closed test now injects `RemotionRenderEngine` with a nonexistent entry point (deterministic `RENDER_ENGINE_NOT_CONFIGURED`, no browser launch).
+- `test/real-render.test.ts` (new): env-gated (`VF_REAL_RENDER_E2E=1`) real-render integration — bundles the real entry, renders 60 frames of 540×960@30fps with Arabic text `مرحباً من Video Factory`, validates MP4 + ffprobe (h264, ~2.05s), and proves `RenderService` reaches `READY` only after real bytes exist. Skips cleanly when the flag is unset.
+- `apps/render-worker/scripts/prebundle.mjs` (new): bundles the entry to a dir for Docker/pre-deployed serve URLs.
 
-### 8. Publishing can silently become mock behavior
-- `createPublishingProvider()` returns `MockPublishingProvider` in non-test environments when the corresponding OAuth client/app environment variable is missing.
-- This can produce a false-positive publishing path instead of failing closed in production.
+### Docker / packaging
+- `apps/web/Dockerfile`: all stages switched to `node:20-bookworm-slim` (glibc — required by the Remotion compositor and headless Chromium). Runner now installs `chromium`, `ffmpeg`, `fontconfig`, Arabic fonts (`fonts-noto-core`, `fonts-noto-ui-core`, `fonts-kacst`, `fonts-hosny-amiri`, `fonts-liberation`); pre-bundles the composition at build time to `/app/render-bundle`; sets `REMOTION_SERVE_URL`, `REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium`, `REMOTION_CHROME_MODE=chrome-for-testing`; healthcheck uses `node fetch` (wget absent on slim). Rendering stays in-process in the web container — no fake worker service.
+- `apps/web/next.config.mjs`: `serverExternalPackages: ['@remotion/bundler','@remotion/renderer','@remotion/cli']` + `outputFileTracingIncludes` for `@remotion+compositor*` platform binaries (spawned, not require()'d, so nft misses them).
+- `apps/render-worker/package.json`: added `./package.json` export (fixes `require.resolve` tracing warning).
+- `docker-compose.production.yml`: `REMOTION_SERVE_URL=/app/render-bundle`, `REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium`, `REMOTION_CHROME_MODE=chrome-for-testing` defaults.
+- Verified: `apps/web/.next/standalone` contains `apps/web/node_modules/@remotion/{bundler,renderer}` symlinks + `.pnpm/@remotion+compositor-win32-x64-msvc` — the standalone render route resolves the real toolchain.
 
-### 9. Existing tests are code-level/offline evidence, not a live Golden Path
-- The repository's Golden Path test explicitly uses `MockLlmProvider`, mock storage, `forceMock` publishing, and `forceMock` analytics.
-- Database tests validate schema objects/IDs and do not prove a live PostgreSQL migration/transaction cycle.
-- Render tests use mock storage and the simulated `RenderService` output described above.
-- The previous `69/69`, lint, typecheck, build, and 36-route claims remain historical results from 2026-08-20; they were not independently rerun during this repository-only audit.
-- No GitHub Actions workflow/check run was found for the audited commit.
+### Environment docs
+- `.env.example`: `REMOTION_*` variables documented (serve URL, entry point, public dir, browser executable, chrome mode, frame timeout).
 
-## External Integration State
+## Production Reality Gate — Part 3: Docker Runtime Verification (this iteration)
 
-| Boundary | Implemented in code | Configured/live verified |
-| --- | --- | --- |
-| PostgreSQL | Yes | Not verified against a production instance in this audit |
-| n8n | Workflow JSONs exist | Import/activation/live execution not verified |
-| Gemini LLM | Adapter exists | Credentials/live request not verified |
-| Gemini Image | Adapter exists | Current API compatibility/live request not verified |
-| Google/Veo Video | Adapter exists but requires correction | Not live verified |
-| ElevenLabs | Adapter exists | Credentials/live request not verified |
-| Cloudflare R2 | Real S3-compatible adapter exists | Bucket/credentials/read-write not live verified |
-| Remotion | Composition/component code exists | Real MP4 rendering not implemented by current RenderService |
-| YouTube | Real provider code exists | OAuth/account/upload not live verified |
-| Instagram | Real provider code exists | OAuth/account/publish not live verified |
-| TikTok | Real provider code exists | OAuth/account/publish not live verified |
-| Analytics | Provider code exists | Live post-publication reconciliation not verified |
+### What changed
+- `.dockerignore` (new): excludes `node_modules`, `**/.next`, `**/dist`, `.env*`, `.git`, Docker artifacts — previously absent, which risked Windows host `node_modules` junctions and local build output corrupting the Linux image layers.
+- `apps/web/next.config.mjs`: fixed `outputFileTracingIncludes` glob — include globs resolve relative to the app dir (`apps/web`), not `outputFileTracingRoot`; the pnpm store lives at the workspace root, so the pattern is now `../../node_modules/.pnpm/@remotion+compositor*/**`. Previously only `package.json`/`index.js` were traced — the spawned `remotion`/`ffmpeg`/`ffprobe` binaries and `libav*` shared libraries were silently dropped from standalone.
+- `apps/web/Dockerfile`: creates `/home/nextjs` (writable) and sets `ENV HOME=/home/nextjs` — `--system` users default to `HOME=/nonexistent`, which made headless Chromium fail to create its user-data dir (`chrome_crashpad_handler: --database is required` → browser launch failure).
+- `apps/render-worker/test/docker-render-gate.cjs` (new): deterministic in-container render verification — mirrors `RemotionRenderEngine.render()` (same `selectComposition`/`renderMedia` options against `REMOTION_SERVE_URL=/app/render-bundle` + system Chromium) with the schema-defaulted Arabic manifest, then runs the same artifact validation (exists, >0 bytes, `ftyp`, ffprobe h264/duration>0). Copied in via `docker cp` at verification time.
 
-## External Approval Boundaries
-- YouTube public publishing may require the Google/YouTube API project audit/verification depending on project status; live project status is unknown from the repository.
-- Instagram permissions/app review status is unknown from the repository.
-- TikTok `video.publish` approval/audit status is unknown from the repository; unaudited Direct Post clients are restricted by TikTok.
+### Docker build result
+- `docker build -f apps/web/Dockerfile -t video-factory-web:runtime-gate .` — **SUCCESS** (image `video-factory-web:runtime-gate`).
+- Exercised: pnpm `--frozen-lockfile` workspace install (601 pkgs), workspace package builds, Next.js 15.5.23 standalone build (36 routes), Remotion `prebundle.mjs` → `/app/render-bundle` (21 MB), apt install of `chromium` 154.0.8037.92 + `ffmpeg`/`ffprobe` 5.1.9 + fontconfig + Noto/Kacst/Amiri/Liberation fonts.
 
-## Documentation / Repository Notes
-- The connected repository currently resolves as `abudoxali/Video_Factory`, not the requested lowercase-hyphen literal `abudoxali/video-factory`.
-- No explicit stale GitHub URL/reference to `abudoxali/workflow` was found in the audited code search.
-- `README.md` is stale in places: it still describes the render worker as a future-phase boundary and lists an `infrastructure/nginx` directory that is not present in the current tree.
+### Image inspection
+- `node --version` → v20.20.2; `chromium --version` → 154.0.8037.92 (Debian bookworm); `ffmpeg`/`ffprobe` → 5.1.9.
+- `/app/apps/web/server.js` present; `/app/render-bundle` present (incl. `public/fonts/cairo-{arabic,latin}.woff2`).
+- `require.resolve('@remotion/renderer')`/`('@remotion/bundler')` resolve to `/app/node_modules/.pnpm/@remotion+*@4.0.513/...`.
+- `@remotion/compositor-linux-x64-gnu` package complete in image (`remotion` 1.3 MB binary, `ffmpeg`, `ffprobe`, `libavcodec.so`, etc. — verified after the tracing fix).
+- `fc-list` → 325 font entries (Arabic-capable Noto/Kacst/Amiri included).
+- `REMOTION_SERVE_URL=/app/render-bundle`, `REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium`, `REMOTION_CHROME_MODE=chrome-for-testing` baked into the image.
 
-## Current Release Gate
-Do **not** deploy as a production release yet. The next execution should first remove the false-positive production paths so that missing integrations fail closed and the Golden Path can only report success when real planning, media generation, rendering, storage, and publishing have actually occurred.
+### Container boot + health
+- `docker run` with safe non-secret test env (unique `rtgate-*` values that pass the production gate; `ENABLE_YOUTUBE/INSTAGRAM/TIKTOK=false`; no real credentials used).
+- Boot: `Next.js 15.5.23 ✓ Ready in 95–137ms`; instrumentation `validateProductionEnvironment('web-startup')` passed — fail-closed gate intact, no weakening.
+- `GET /api/health/live` → `200 {"status":"ok","service":"video-factory-web",...}`; Docker `HEALTHCHECK` reports `(healthy)`; no crash loop, no missing-module errors in logs.
 
-## Next Execution
-**Production Reality Gate — Part 1: make the production runtime fail-closed and make the real Golden Path executable rather than simulated.**
+### Real in-container Remotion render — VERIFIED
+- `docker exec` → `node render-gate.cjs`: `selectComposition` resolved `MainVideoComposition` 540×960 @30fps, 60 frames; `renderMedia` produced `/tmp/render-gate.mp4`.
+- In-container ffprobe validation passed; artifact copied out and re-probed on host ffprobe:
+  - `codec_name=h264 (High)`, `540x960`, `r_frame_rate=30/1`, `nb_frames=60`
+  - audio stream: `aac (LC)`, `nb_frames=96`
+  - `duration=2.048s`, `size=134397 bytes`, `format_name=mov,mp4,...`
+- Arabic scene text `مرحباً من Video Factory` + RTL caption `مرحباً من مصنع الفيديو` rendered through the real path (vendored Cairo font in the bundle).
+- No synthetic/fake path involved; disposable MP4 deleted after verification; container removed.
 
-The first implementation pass should focus only on the minimum blockers required to reach a truthful production run; no new product features, redesigns, providers, platforms, or unrelated refactors.
+### Compose validation
+- `docker compose -f docker-compose.production.yml --env-file <temp-test-env> config` — PASS; all `${VAR:?}` required vars interpolate, Remotion defaults (`/app/render-bundle`, `/usr/bin/chromium`, `chrome-for-testing`) resolve; temp env file deleted after validation.
+
+### Fixes required during Docker verification
+1. Missing `.dockerignore` → added (context + layer hygiene).
+2. `outputFileTracingIncludes` glob resolved relative to app dir → `../../node_modules/...` prefix (compositor binaries now actually traced; verified in both the image and local standalone).
+3. `HOME=/nonexistent` for the `nextjs` user broke headless Chromium → created `/home/nextjs` + `ENV HOME`.
+
+## Real Render Verification Evidence
+- Executed `VF_REAL_RENDER_E2E=1` + `REMOTION_BROWSER_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe` (the Remotion headless-shell auto-download stalls in this network; system Chrome used — same code path).
+- Output: `…\Temp\vf-real-render-test\real-render-out.mp4` — **133,865 bytes**, `ftyp` container verified.
+- `ffprobe`: `codec=h264 (High)`, `540x960`, `30 fps`, `nb_frames=60`, `duration=2.048s`, `format=mov,mp4,...` — a genuine playable MP4 with the Arabic text scene and RTL captions rendered.
+- RenderService end-to-end: `status=READY`, real SHA-256 checksum, `final-v1.mp4` object key, bytes uploaded — only after real render success.
+- Disposable artifacts cleaned up; no MP4/binary fixtures committed (only the two small vendored font files).
+
+## Production Reality Gate — Part 4: Real n8n Orchestration (this iteration)
+
+### What changed
+- New authenticated internal execution boundaries — n8n now calls real application services/providers instead of fabricating output:
+  - `POST /api/internal/planning/execute` → `PlanningEngine` (full pipeline or `stage` = `AI_DIRECTOR` / `SCRIPT_GENERATION` / `SCENE_PLANNING`).
+  - `POST /api/internal/media/execute` → `MediaCoordinator` against configured image/video/voice providers + storage; hard `APPROVED` gate preserved.
+  - `GET /api/internal/media/status` → truthful per-scene media audit, optional `verify_storage=1` `head()` proof.
+  - `POST /api/internal/render/execute` → `RenderCoordinator.buildRenderManifest` + `RenderService.renderVideo` (the real Remotion/R2 path from Parts 2–3); reuses an existing READY render unless `force`.
+  - `GET /api/internal/render/status` → render record + optional storage verification.
+  - `POST /api/internal/publishing/execute` → single-publication drive or batch dispatch through real publishing providers; launch-disabled platforms skipped explicitly; missing credentials fail closed.
+- `apps/web/src/lib/orchestration.ts` (new): shared internal helpers — `emitPhaseEvent`, `resolvePhaseJob`, entity→contract mappers, `buildPublishIdempotencyKey` (deterministic SHA-256 of user/video/render/platform), and `drivePublication` (single real provider path: PUBLISHED → untouched, in-flight → `getStatus` reconcile, QUEUED/FAILED → `publish` with persisted idempotencyKey).
+- `apps/web/src/lib/n8n.ts`: added `triggerN8nWorkflow(path, payload)` — fires downstream workflow webhooks with `x-webhook-secret` + `webhook_secret`, fail-logged never thrown.
+- `apps/web/src/app/api/videos/[id]/plan/approve/route.ts`: human approval now triggers the VF-04 media pipeline webhook — `APPROVED → media generation` preserved.
+- `packages/contracts/src/orchestration.ts` (new) + export: execute request schemas + `decidePublicationAction` + `summarizeSceneMediaStates`.
+- `packages/database/src/queries/jobs.ts`: added `createPhaseJobTransaction` (mints a real job per internal phase so progress is never silently dropped) + `appendDiagnosticJobEvent`.
+- `packages/database/src/queries/render.ts`: **bug fix** — render job updates/events wrote nonexistent `stage`/`event` columns; now write `currentStage`/`eventType` + `eventId` (latent bug, only fired when a `jobId` was passed).
+- `packages/database/src/queries/media.ts`: added `getVideoMediaAssets`, `getSceneMediaAssets`, `getMediaAssetById`, `supersedeMediaAsset`, `getLatestMediaRunForScene`, `updateMediaRunStatus`.
+- `packages/providers/src/media-coordinator.ts`: idempotent resume — scenes with existing ACTIVE assets are skipped; in-flight async video runs are resumed via persisted `providerRequestId` (stale >30min runs fail and resubmit); voice failure now fails truthfully instead of silent READY; test-injectable loaders added.
+
+### Workflows changed (VF-00 .. VF-15 rewritten; VF-16/VF-17 preserved)
+- **VF-00** Core Job Orchestrator: fabrication Code nodes (brief/script/scenes) deleted → calls `POST /api/internal/planning/execute`, branches on real success, emits truthful ready/failed job events.
+- **VF-01/02/03**: now call `/api/internal/planning/execute` with their real stage; results persisted by `PlanningEngine`, not by n8n.
+- **VF-04**: calls `/api/internal/media/execute`; `allResolved && allReady` → triggers VF-09 webhook; `generating > 0` → Wait 60s → resume via same execute call (idempotent); otherwise stops truthfully (execute endpoint already marked the job FAILED).
+- **VF-05/06/07**: single `media/execute` call scoped by `asset_types` (`IMAGE`/`VIDEO`/`VOICE`) + optional `scene_id`.
+- **VF-08**: `GET /api/internal/media/status?verify_storage=1` → trigger render only when `verified`.
+- **VF-09**: `POST /api/internal/render/execute` → trigger VF-10 only on real `status=READY`.
+- **VF-10**: `GET /api/internal/render/status?verify_storage=1` → trigger VF-11 only on `verified`.
+- **VF-11**: same verified render gate → trigger VF-12.
+- **VF-12**: `POST /api/internal/publishing/execute` batch dispatch (platforms/accounts optional → auto-resolved to launch-enabled platforms + connected accounts).
+- **VF-13/14/15**: `POST /api/internal/publishing/execute` single-publication drive with `expected_platform` guard.
+- Every webhook validates the shared `N8N_VIDEO_FACTORY_WEBHOOK_SECRET` (body `webhook_secret` or `x-webhook-secret` header) and fails closed when unset/mismatched; every app call sends `x-callback-secret`.
+- **VF-16/VF-17**: unchanged — already called real `/api/internal/publishing/reconcile` + `/api/internal/analytics/sync`.
+
+### Simulated paths removed
+- Code nodes fabricating creative briefs, scripts, narration, scenes, visual prompts (VF-00..VF-03).
+- READY/COMPLETED media states asserted with zero provider calls (VF-04..VF-08).
+- Render progress reported without a Remotion execution (VF-09..VF-11).
+- Publication success without provider confirmation (VF-12..VF-15).
+
+### Not exercised yet
+- The new workflows are validated as JSON + by contract tests, but no live n8n instance has executed them yet. Legacy ingest endpoints (`/api/internal/n8n/{planning,media,render}`) remain for compatibility but are no longer invoked by any workflow.
+
+## Live PostgreSQL
+- Schema & migrations `0000`–`0004` unchanged; 18-table domain model preserved.
+
+## Live n8n
+- 18 workflow JSON definitions: VF-00..VF-15 rewritten to orchestrate real internal APIs (see Part 4); VF-16/VF-17 unchanged. Production env still requires non-localhost webhook URL + real secrets (`N8N_VIDEO_FACTORY_WEBHOOK_SECRET`, `VIDEO_FACTORY_N8N_CALLBACK_SECRET`).
+
+## Live AI / Media Providers
+- Unchanged (Part 1 gates intact); mocks remain test/dev-only.
+
+## Live R2
+- `R2StorageProvider` fails closed without real config. Object-key conventions preserved.
+
+## Remotion Render
+- **Real.** `MainVideoComposition` rendered via `@remotion/renderer` programmatic pipeline. Cairo vendored for Arabic; Docker image carries system Chromium + ffmpeg + Arabic fonts + a pre-bundled composition.
+
+## YouTube / Instagram / TikTok
+- Providers unchanged; Part-1 fail-closed OAuth/config gates unchanged.
+
+## Authentication
+- Signed session cookie + HMAC OAuth state (Part 1) — unchanged.
+
+## Production Docker
+- `apps/web/Dockerfile`: `node:20-bookworm-slim` multi-stage → standalone + render-bundle + Chromium/ffmpeg/fonts + writable `HOME`. **Image build VERIFIED** — `video-factory-web:runtime-gate` builds, boots healthy, serves `/api/health/live`, and renders real MP4s in-container.
+- `docker-compose.production.yml`: `web` + `postgres`; all secrets via env references; Remotion runtime defaults baked in; `config` validated with test env.
+
+## Security Audit
+- Changed-file sweep: no API keys, OAuth secrets, tokens, R2 credentials, DB passwords, `.env`, or private keys. Only hits were minified build artifacts in `.next/` (not committed source).
+
+## Tests
+- `pnpm install --frozen-lockfile`: PASS (workspace already up to date).
+- `pnpm typecheck`: PASS (0 errors, 7 projects).
+- `pnpm lint` (web): PASS (0 errors, 0 warnings).
+- `pnpm test`: PASS — **142/142** unit tests + 2 env-gated real-render tests skipped by default:
+  - `packages/contracts`: 30 (incl. 12 new orchestration-contract tests + 4 new workflow no-fabrication/auth/API assertions), `packages/database`: 2, `packages/providers`: 48 (incl. 6 new MediaCoordinator idempotency/truthfulness tests), `apps/web`: 57 (incl. 16 new internal-endpoint auth-gating tests), `apps/render-worker`: 5 (+2 real-render skipped without `VF_REAL_RENDER_E2E=1`).
+- Real render integration (`VF_REAL_RENDER_E2E=1`): **PASS — 2/2** (real MP4 produced + verified; READY only after real bytes).
+- `pnpm build`: PASS (Next.js 15.5.23, 36 routes, 0 warnings; standalone includes traced @remotion toolchain **including compositor binaries**).
+- `docker compose -f docker-compose.production.yml config` (temp test env): PASS.
+- `docker build -f apps/web/Dockerfile -t video-factory-web:runtime-gate .`: **PASS** — built, booted healthy, `/api/health/live` 200, real in-container MP4 render verified.
+
+## Remaining Blockers
+1. **Live credentials + external service verification** — Gemini/ElevenLabs/R2/OAuth/n8n never exercised live; external app reviews (Google/Meta/TikTok) outstanding.
+2. **Standalone render-worker service** — still none; rendering is in-process in the web container (intentional for now, now proven working).
+3. **Golden Path** — never executed against live services; render stage proven real locally AND in-container; orchestration endpoints proven at unit/contract level only — no live n8n run yet.
+4. **Browser distribution** — Remotion's headless-shell auto-download depends on `storage.googleapis.com` reachability; environments without it must set `REMOTION_BROWSER_EXECUTABLE` (the Docker image does).
+5. **Live n8n smoke run** — VF-00..VF-15 rewritten but not yet executed on a running n8n instance with a real `N8N_WEBHOOK_BASE_URL`.
+
+## Exact Next Execution Required
+1. Provision real credentials per `.env.example`; deploy via `docker-compose.production.yml` (web + postgres) and a real n8n instance loaded with `n8n/workflows/*.json` + `N8N_WEBHOOK_BASE_URL` / `N8N_VIDEO_FACTORY_WEBHOOK_SECRET` / `VIDEO_FACTORY_N8N_CALLBACK_SECRET`.
+2. Execute one real Golden Path run end-to-end (request → plan → approval → media → render → publish) before marking this release ready.
+
+## Last Verification
+Part 4 verified at unit/contract level: all 18 workflow JSONs valid + fabrication-free + authenticated; 142/142 unit tests pass (16 new internal-endpoint auth tests, 12 orchestration-contract tests, 6 MediaCoordinator idempotency tests, 4 new workflow-structure guards); typecheck PASS (7 projects); lint PASS; `next build` PASS (36+ routes incl. 6 new `/api/internal/*` execute/status endpoints). Render-job DB column bug (`stage`/`event` → `currentStage`/`eventType`) fixed. Live n8n execution + live credentials + Golden Path remain unexecuted.
+2026-10-02 — Part 3 verified: production image `video-factory-web:runtime-gate` built and booted healthy; `/api/health/live` returned 200; in-container real Remotion render produced a genuine 134,397-byte MP4 (h264 High + aac LC, 540×960@30fps, 60 frames, 2.048s) with Arabic text, double-validated by ffprobe in-container and on host. Unit suite 104/104 PASS, typecheck PASS, lint PASS, web build PASS, compose config PASS. Fixes applied: `.dockerignore`, nft include glob path prefix, writable `HOME` for the runtime user. Live credentials and end-to-end Golden Path remain unexecuted.

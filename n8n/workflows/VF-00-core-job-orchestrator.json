@@ -13,18 +13,24 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [220, 300],
+      "position": [
+        220,
+        300
+      ],
       "webhookId": "vf-job-orchestrator"
     },
     {
       "parameters": {
-        "jsCode": "// Validate incoming job payload\nconst body = $input.item.json.body || $input.item.json;\nif (!body.job_id || !body.video_id) {\n  throw new Error('Invalid start payload: job_id and video_id are required');\n}\n\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || {},\n    version: body.version || '1.0',\n    received_at: new Date().toISOString()\n  }\n};"
+        "jsCode": "// Authenticate + validate the incoming job payload.\nconst body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.job_id || !body.video_id) {\n  throw new Error('Invalid start payload: job_id and video_id are required');\n}\n\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || {},\n    version: body.version || '1.0',\n    received_at: new Date().toISOString()\n  }\n};"
       },
       "id": "node_validate_input",
-      "name": "Validate & Parse Input",
+      "name": "Validate & Authenticate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 300]
+      "position": [
+        440,
+        300
+      ]
     },
     {
       "parameters": {
@@ -38,7 +44,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [660, 180]
+      "position": [
+        660,
+        120
+      ]
     },
     {
       "parameters": {
@@ -49,7 +58,7 @@
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -59,34 +68,27 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تحليل الفكرة والتوجيه الإبداعي بواسطة AI Director\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تنفيذ التخطيط الإنتاجي الحقيقي عبر خدمة التخطيط\"\n}"
       },
       "id": "node_callback_init",
-      "name": "Callback: AI Director Start",
+      "name": "Callback: Planning Started",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 380]
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $input.item.json;\nconst req = input.request || {};\n\n// Generate Creative Brief (VF-01)\nconst brief = {\n  workingTitle: req.title || 'فيديو ذكي - ' + (req.prompt ? req.prompt.substring(0, 30) : 'جديد'),\n  coreIdea: req.prompt || '',\n  objective: 'إنتاج محتوى فيديو احترافي على ' + (req.platform || 'tiktok'),\n  targetAudience: 'جمهور منصات التواصل الرقمي المهتم بالمحتوى المبتكر',\n  platform: req.platform || 'tiktok',\n  videoType: req.type || 'short',\n  targetDurationSeconds: req.duration_seconds || 30,\n  language: req.language || 'ar',\n  tone: 'حماسي واحترافي',\n  contentAngle: 'طرح مباشر وسريع',\n  hookStrategy: 'سؤال صادم أو معلومة مفاجئة في أول 3 ثوان',\n  narrativeStyle: 'مشكلة -> حل -> دعوة للتفاعل',\n  visualDirection: 'لقطات سينمائية مع موشن جرافيك توضيحي',\n  pacing: 'fast',\n  keyPoints: ['الوضوح', 'السرعة', 'التأثير'],\n  constraints: ['الالتزام بالمدة المحددة'],\n  requiresResearch: false\n};\n\nreturn {\n  json: {\n    ...input,\n    brief: brief\n  }\n};"
-      },
-      "id": "node_execute_director",
-      "name": "Execute AI Director (VF-01)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [880, 380]
+      "position": [
+        660,
+        360
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/planning/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -96,34 +98,63 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"AI_DIRECTOR\",\n  \"brief\": $json.brief,\n  \"progress\": 25,\n  \"message\": \"تم الانتهاء من التوجيه الإبداعي وتحليل الفكرة\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id\n}",
+        "options": {
+          "timeout": 600000
+        },
+        "onError": "continueRegularOutput"
       },
-      "id": "node_persist_brief",
-      "name": "Persist Brief",
+      "id": "node_execute_planning",
+      "name": "Execute Real Planning Pipeline",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1100, 380]
+      "position": [
+        900,
+        360
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.item.json;\nconst brief = input.brief || {};\nconst duration = brief.targetDurationSeconds || 30;\n\n// Generate Script (VF-02)\nconst script = {\n  videoId: input.video_id,\n  title: brief.workingTitle,\n  hook: brief.hookStrategy,\n  fullNarration: 'هل تعلم أن المحتوى المرئي يجذب أكثر من 80% من تفاعل الجمهور؟ إليك الخطوات الأساسية لتحقيق أعلى وصول وتأثير في وقت قياسي. أولاً: اختر الفكرة المباشرة. ثانياً: ركز على الجودة البصرية. ثالثاً: شجع المشاهدين على المشاركة.',\n  estimatedWordCount: Math.round(duration * 2.2),\n  estimatedDurationSeconds: duration,\n  language: brief.language || 'ar',\n  callToAction: 'تابعنا للمزيد من المحتوى المميز',\n  sections: [\n    {\n      id: 'sec_1',\n      title: 'المقدمة والخطاف',\n      narration: 'هل تعلم أن المحتوى المرئي يجذب أكثر من 80% من تفاعل الجمهور؟',\n      targetDurationSeconds: Math.round(duration * 0.25)\n    },\n    {\n      id: 'sec_2',\n      title: 'الشرح والنقاط الأساسية',\n      narration: 'إليك الخطوات الأساسية: اختر الفكرة المباشرة، وركز على الجودة البصرية.',\n      targetDurationSeconds: Math.round(duration * 0.5)\n    },\n    {\n      id: 'sec_3',\n      title: 'الخاتمة والدعوة للإجراء',\n      narration: 'شجع المشاهدين على المشاركة وتابعنا للمزيد!',\n      targetDurationSeconds: Math.round(duration * 0.25)\n    }\n  ]\n};\n\nreturn {\n  json: {\n    ...input,\n    script: script\n  }\n};"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "planning-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "node_execute_script",
-      "name": "Execute Script Gen (VF-02)",
-      "type": "n8n-nodes-base.code",
+      "id": "node_planning_outcome",
+      "name": "Planning Succeeded?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1320, 380]
+      "position": [
+        1140,
+        360
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -133,34 +164,27 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"SCRIPT_GENERATION\",\n  \"script\": $json.script,\n  \"progress\": 50,\n  \"message\": \"تم إنشاء السيناريو والنص السردي\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_ready_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"PLAN_READY\",\n  \"progress\": 100,\n  \"message\": \"اكتمل التخطيط الإنتاجي الحقيقي — الخطة جاهزة للاعتماد والمراجعة\"\n}"
       },
-      "id": "node_persist_script",
-      "name": "Persist Script",
+      "id": "node_planning_complete",
+      "name": "Callback: Plan Ready",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1540, 380]
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $input.item.json;\nconst brief = input.brief || {};\nconst script = input.script || {};\nconst totalDur = brief.targetDurationSeconds || 30;\n\n// Generate Scenes (VF-03)\nconst scenes = [\n  {\n    position: 1,\n    purpose: 'Hook',\n    narration: script.hook,\n    onScreenText: brief.workingTitle,\n    visualDescription: 'لقطة افتتاحية مشوقة بدقة سينمائية عالية',\n    visualPrompt: 'Cinematic wide shot, dramatic studio lighting, 8k quality, engaging hero visual',\n    mediaStrategy: 'AI_VIDEO',\n    durationSeconds: Math.max(3, Math.round(totalDur * 0.25))\n  },\n  {\n    position: 2,\n    purpose: 'Explanation',\n    narration: 'شرح الخطوات والنقاط الرئيسية',\n    onScreenText: '3 خطوات للنجاح',\n    visualDescription: 'رسوم بيانية وموشن جرافيك ثلاثي الأبعاد جذاب',\n    visualPrompt: 'Dynamic 3D motion graphics isometric layout, neon glowing highlights, dark backdrop',\n    mediaStrategy: 'MOTION_GRAPHICS',\n    durationSeconds: Math.max(4, Math.round(totalDur * 0.5))\n  },\n  {\n    position: 3,\n    purpose: 'CTA Outro',\n    narration: script.callToAction || 'تابعنا للمزيد',\n    onScreenText: 'اشترك الآن',\n    visualDescription: 'لقطة نهائية راقية تبرز زر المتابعة والتفاعل',\n    visualPrompt: 'Minimalist aesthetic outro frame, soft ambient glow, professional finish',\n    mediaStrategy: 'AI_IMAGE',\n    durationSeconds: Math.max(3, totalDur - Math.round(totalDur * 0.25) - Math.round(totalDur * 0.5))\n  }\n];\n\nreturn {\n  json: {\n    ...input,\n    scenes: scenes\n  }\n};"
-      },
-      "id": "node_execute_scenes",
-      "name": "Execute Scene Planner (VF-03)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1760, 380]
+      "position": [
+        1380,
+        260
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -170,57 +194,84 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"PLAN_READY\",\n  \"scenes\": $json.scenes,\n  \"progress\": 100,\n  \"message\": \"تم الانتهاء من جميع مراحل التخطيط بنجاح، الخطة جاهزة للاعتماد والمراجعة\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_failed_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل تنفيذ التخطيط الحقيقي: \" + ($json.error || $json.message || 'provider failure')\n}"
       },
-      "id": "node_persist_scenes_final",
-      "name": "Persist Scenes & Complete Plan",
+      "id": "node_planning_failed",
+      "name": "Callback: Planning Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1980, 380]
+      "position": [
+        1380,
+        460
+      ]
     }
   ],
   "connections": {
     "Webhook Trigger": {
       "main": [
-        [{ "node": "Validate & Parse Input", "type": "main", "index": 0 }]
-      ]
-    },
-    "Validate & Parse Input": {
-      "main": [
         [
-          { "node": "Respond to Webhook", "type": "main", "index": 0 },
-          { "node": "Callback: AI Director Start", "type": "main", "index": 0 }
+          {
+            "node": "Validate & Authenticate",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
-    "Callback: AI Director Start": {
+    "Validate & Authenticate": {
       "main": [
-        [{ "node": "Execute AI Director (VF-01)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Callback: Planning Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Execute AI Director (VF-01)": {
+    "Callback: Planning Started": {
       "main": [
-        [{ "node": "Persist Brief", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Real Planning Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Persist Brief": {
+    "Execute Real Planning Pipeline": {
       "main": [
-        [{ "node": "Execute Script Gen (VF-02)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Planning Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Execute Script Gen (VF-02)": {
+    "Planning Succeeded?": {
       "main": [
-        [{ "node": "Persist Script", "type": "main", "index": 0 }]
-      ]
-    },
-    "Persist Script": {
-      "main": [
-        [{ "node": "Execute Scene Planner (VF-03)", "type": "main", "index": 0 }]
-      ]
-    },
-    "Execute Scene Planner (VF-03)": {
-      "main": [
-        [{ "node": "Persist Scenes & Complete Plan", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Callback: Plan Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Callback: Planning Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -228,7 +279,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "vf-00-v2",
+  "versionId": "vf-00-v3",
   "id": "VF00CoreJobOrchestrator",
   "tags": []
 }

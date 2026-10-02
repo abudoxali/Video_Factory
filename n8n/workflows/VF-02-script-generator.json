@@ -8,32 +8,39 @@
         "responseMode": "onReceived",
         "options": {}
       },
+      "id": "node-vf02-webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [180, 240],
-      "id": "node-vf02-webhook"
+      "position": [
+        180,
+        240
+      ],
+      "webhookId": "vf-02-script"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    brief: body.brief || {},\n    prompt_version: 'script/v1'\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    video_id: body.video_id || null,\n    job_id: body.job_id || '',\n    publication_id: body.publication_id || null,\n    render_id: body.render_id || null,\n    scene_id: body.scene_id || null,\n    platforms: body.platforms || null,\n    account_ids: body.account_ids || null,\n    metadata: body.metadata || null,\n    received_at: new Date().toISOString()\n  }\n};"
       },
-      "name": "Parse Input",
+      "id": "node-vf02-validate",
+      "name": "Validate & Authenticate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 240],
-      "id": "node-vf02-parse"
+      "position": [
+        400,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/planning/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -43,34 +50,63 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_script_start_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"planning.script_started\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"SCRIPT_GENERATION\",\n  \"progress\": 35,\n  \"message\": \"جاري كتابة السيناريو وصياغة السرد بواسطة Script Generator\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id,\n  \"stage\": \"SCRIPT_GENERATION\"\n}",
+        "options": {
+          "timeout": 600000
+        },
+        "onError": "continueRegularOutput"
       },
-      "name": "Notify Script Stage",
+      "id": "node-vf02-execute",
+      "name": "Execute Real Script Generation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [620, 240],
-      "id": "node-vf02-notify"
+      "position": [
+        640,
+        240
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.item.json;\nconst brief = input.brief || {};\nconst duration = brief.targetDurationSeconds || 30;\n\nconst script = {\n  videoId: input.video_id,\n  title: brief.workingTitle || 'سيناريو الفيديو',\n  hook: brief.hookStrategy || 'هل ترغب في معرفة السر؟',\n  fullNarration: 'هل ترغب في معرفة السر؟ إليك أهم النقاط الأساسية لتحقيق هدفك بسرعة وكفاءة. أولاً: التخطيط المنظم. ثانياً: الاستمرارية في التنفيذ. تابعنا للمزيد من المحتوى المميز!',\n  estimatedWordCount: Math.round(duration * 2.2),\n  estimatedDurationSeconds: duration,\n  language: brief.language || 'ar',\n  callToAction: brief.callToAction || 'شارك الفيديو مع أصدقائك',\n  sections: [\n    {\n      id: 'sec_1',\n      title: 'الخطاف الافتتاحي',\n      narration: 'هل ترغب في معرفة السر؟',\n      targetDurationSeconds: Math.round(duration * 0.2)\n    },\n    {\n      id: 'sec_2',\n      title: 'المحتوى الأساسي',\n      narration: 'إليك أهم النقاط الأساسية لتحقيق هدفك بسرعة وكفاءة: التخطيط والاستمرارية.',\n      targetDurationSeconds: Math.round(duration * 0.6)\n    },\n    {\n      id: 'sec_3',\n      title: 'الخاتمة والدعوة للإجراء',\n      narration: 'تابعنا للمزيد من المحتوى المميز!',\n      targetDurationSeconds: Math.round(duration * 0.2)\n    }\n  ]\n};\n\nreturn {\n  json: {\n    job_id: input.job_id,\n    video_id: input.video_id,\n    stage: 'SCRIPT_GENERATION',\n    script: script\n  }\n};"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "name": "Build Script Structure",
-      "type": "n8n-nodes-base.code",
+      "id": "node-vf02-outcome",
+      "name": "Script Generated?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [840, 240],
-      "id": "node-vf02-build-script"
+      "position": [
+        880,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -80,39 +116,114 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"SCRIPT_GENERATION\",\n  \"script\": $json.script,\n  \"progress\": 50,\n  \"message\": \"تمت صياغة السيناريو الكامل وتوزيع المقاطع\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Execute Real Script Generation').item.json.job_id || $('Validate & Authenticate').item.json.job_id + \"_\" + Date.now(),\n  \"job_id\": $('Execute Real Script Generation').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.script_ready\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"SCENE_PLANNING\",\n  \"progress\": 60,\n  \"message\": \"اكتمل توليد السيناريو الحقيقي وحُفظ النص السردي\"\n}",
+        "options": {
+          "timeout": 600000
+        },
+        "onError": "continueRegularOutput"
       },
-      "name": "Persist Script To App",
+      "id": "node-vf02-ok",
+      "name": "Callback: Script Ready",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1060, 240],
-      "id": "node-vf02-persist"
+      "position": [
+        1120,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 40,\n  \"message\": \"فشل توليد السيناريو: '\" + ($json.error || 'provider failure') + \"'\"\n}",
+        "options": {
+          "timeout": 600000
+        },
+        "onError": "continueRegularOutput"
+      },
+      "id": "node-vf02-fail",
+      "name": "Callback: Script Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        340
+      ]
     }
   ],
   "connections": {
     "Webhook Trigger": {
       "main": [
-        [{ "node": "Parse Input", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate & Authenticate",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Parse Input": {
+    "Validate & Authenticate": {
       "main": [
-        [{ "node": "Notify Script Stage", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Real Script Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Notify Script Stage": {
+    "Execute Real Script Generation": {
       "main": [
-        [{ "node": "Build Script Structure", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Script Generated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Build Script Structure": {
+    "Script Generated?": {
       "main": [
-        [{ "node": "Persist Script To App", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Callback: Script Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Callback: Script Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "versionId": "vf-02-v3",
+  "id": "VF02ScriptGenerator",
+  "tags": []
 }

@@ -24,5 +24,6 @@ export * from './audio/AudioMixer';
 export * from './transitions/TransitionWrapper';
 export * from './branding/BrandingOverlay';
 
-// Render Service
+// Render Service & Engine seam
+export * from './render/engine';
 export * from './render/RenderService';

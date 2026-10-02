@@ -1,3 +1,4 @@
+import { assertMockProvidersAllowed } from '@video-factory/contracts';
 import type { ImageProvider, ImageProviderConfig } from './types';
 import { GeminiImageProvider } from './gemini-image';
 import { OpenAiImageProvider } from './openai-image';
@@ -17,6 +18,7 @@ export function createImageProvider(
       return new OpenAiImageProvider(config);
     case 'mock':
     case 'test':
+      assertMockProvidersAllowed('image-factory');
       return new MockImageProvider();
     default:
       return new GeminiImageProvider(config);

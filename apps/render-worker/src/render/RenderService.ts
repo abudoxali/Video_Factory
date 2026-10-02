@@ -15,11 +15,23 @@ import {
   updateRenderStatusTransaction,
   recordRenderRunTransaction,
 } from '@video-factory/database';
+import {
+  getDefaultRenderEngine,
+  RenderArtifactValidationError,
+  RenderEngineNotConfiguredError,
+  type RenderEngine,
+} from './engine';
 
 export interface RenderServiceOptions {
   storageProvider?: StorageProvider;
   persistToDb?: boolean;
   tempDir?: string;
+  /**
+   * Explicit render engine. Tests inject explicit doubles here. When omitted,
+   * the real Remotion engine is used and fails closed with
+   * RENDER_ENGINE_NOT_CONFIGURED if the toolchain is not wired.
+   */
+  renderEngine?: RenderEngine;
 }
 
 export interface RenderExecutionResult {
@@ -48,11 +60,13 @@ export class RenderService {
   private readonly storage: StorageProvider;
   private readonly persistToDb: boolean;
   private readonly tempBaseDir: string;
+  private readonly renderEngine?: RenderEngine;
 
   constructor(options?: RenderServiceOptions) {
     this.storage = options?.storageProvider || createStorageProvider();
     this.persistToDb = options?.persistToDb ?? true;
     this.tempBaseDir = options?.tempDir || path.join(os.tmpdir(), 'video-factory-renders');
+    this.renderEngine = options?.renderEngine;
   }
 
   /**
@@ -141,12 +155,9 @@ export class RenderService {
         );
       }
 
-      // 4. Render MP4 file
+      // 4. Render MP4 file through the configured render engine
       outputFilePath = path.join(jobTempDir, `render-${renderId}.mp4`);
-
-      // Produce valid MP4 stream/container buffer
-      const mp4Buffer = await this.generateVideoFile(manifest, outputFilePath);
-      fs.writeFileSync(outputFilePath, mp4Buffer);
+      await this.renderOutput(manifest, outputFilePath);
 
       // 5. Validate Output File
       const fileStats = fs.statSync(outputFilePath);
@@ -210,6 +221,12 @@ export class RenderService {
     } catch (err: unknown) {
       const error = err as Error;
       const latencyMs = Date.now() - startTime;
+      const errorCode: RenderErrorCode =
+        err instanceof RenderEngineNotConfiguredError
+          ? 'RENDER_ENGINE_NOT_CONFIGURED'
+          : err instanceof RenderArtifactValidationError
+            ? 'RENDER_VALIDATION_ERROR'
+            : 'RENDER_ENGINE_ERROR';
 
       if (this.persistToDb) {
         await updateRenderStatusTransaction(
@@ -218,7 +235,7 @@ export class RenderService {
           {
             jobId,
             latencyMs,
-            errorCode: 'RENDER_ENGINE_ERROR',
+            errorCode,
             errorMessage: error.message,
           }
         );
@@ -232,7 +249,7 @@ export class RenderService {
         status: 'FAILED',
         latencyMs,
         error: {
-          code: 'RENDER_ENGINE_ERROR',
+          code: errorCode,
           message: error.message || 'حدث خطأ أثناء تصيير الفيديو',
         },
       };
@@ -249,20 +266,12 @@ export class RenderService {
   }
 
   /**
-   * Generates video buffer for the composition
+   * Executes the configured render engine. No engine is configured means the
+   * real Remotion path — which fails closed when the toolchain is absent —
+   * is used. Synthetic output is never produced as a fallback.
    */
-  private async generateVideoFile(
-    manifest: RenderManifest,
-    _outputPath: string
-  ): Promise<Buffer> {
-    // Valid MP4 container header buffer with ftyp/moov structures
-    const mockMp4Header = Buffer.from(
-      '0000001c6674797069736f6d0000020069736f6d69736f32617663316d7034310000000866726565',
-      'hex'
-    );
-    const contentPayload = Buffer.from(
-      `VIDEO_FACTORY_RENDER_OUTPUT:${manifest.renderId}:${manifest.videoId}:${manifest.composition.width}x${manifest.composition.height}@${manifest.composition.fps}fps:${manifest.composition.durationInFrames}frames`
-    );
-    return Buffer.concat([mockMp4Header, contentPayload]);
+  private async renderOutput(manifest: RenderManifest, outputPath: string): Promise<void> {
+    const engine = this.renderEngine || getDefaultRenderEngine();
+    await engine.render(manifest, outputPath);
   }
 }

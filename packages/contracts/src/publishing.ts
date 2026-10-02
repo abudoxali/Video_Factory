@@ -27,6 +27,7 @@ export const PublicationErrorCodeEnum = z.enum([
   'PUBLISH_TIMEOUT',
   'PUBLISH_PROVIDER_ERROR',
   'PUBLISH_DUPLICATE',
+  'PUBLISH_NOT_CONFIGURED',
 ]);
 export type PublicationErrorCode = z.infer<typeof PublicationErrorCodeEnum>;
 
@@ -204,6 +205,7 @@ export const ArabicPublicationErrorMap: Record<PublicationErrorCode, string> = {
   PUBLISH_TIMEOUT: 'انتهت المهلة الزمنية لمعالجة النشر لدى المنصة',
   PUBLISH_PROVIDER_ERROR: 'حدث خطأ غير متوقع في خوادم منصة التواصل',
   PUBLISH_DUPLICATE: 'تم إرسال هذا المنشور مسبقاً لمنع التكرار غير المقصود',
+  PUBLISH_NOT_CONFIGURED: 'مزود النشر غير مكوّن — بيانات اعتماد المنصة مفقودة في بيئة الإنتاج',
 };
 
 export function getArabicPublicationStatus(status: string): string {

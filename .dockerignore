@@ -1,0 +1,33 @@
+# Dependencies / build output — installed fresh inside the image
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/tsconfig.tsbuildinfo
+**/.turbo
+**/coverage
+
+# Local env / secrets — never enter the build context
+.env
+.env.*
+**/.env
+**/.env.*
+
+# VCS / editor
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+
+# OS / logs / temp
+*.log
+.DS_Store
+Thumbs.db
+tmp
+**/tmp
+
+# Docker artifacts themselves
+Dockerfile
+docker-compose*.yml
+.dockerignore

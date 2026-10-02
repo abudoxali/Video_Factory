@@ -1,3 +1,4 @@
+import { assertMockProvidersAllowed } from '@video-factory/contracts';
 import type { VideoProvider, VideoProviderConfig } from './types';
 import { GoogleVideoProvider } from './google-video';
 import { MockVideoProvider } from './mock';
@@ -15,6 +16,7 @@ export function createVideoProvider(
       return new GoogleVideoProvider(config);
     case 'mock':
     case 'test':
+      assertMockProvidersAllowed('video-factory');
       return new MockVideoProvider();
     default:
       return new GoogleVideoProvider(config);

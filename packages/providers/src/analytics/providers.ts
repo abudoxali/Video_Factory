@@ -1,5 +1,11 @@
 import type { AnalyticsProvider, FetchAnalyticsRequest, NormalizedAnalyticsSnapshot } from './types';
-import type { SocialPlatform } from '@video-factory/contracts';
+import {
+  isPlaceholderValue,
+  isProductionRuntime,
+  isTestRuntime,
+  ProductionConfigError,
+  type SocialPlatform,
+} from '@video-factory/contracts';
 
 export class YouTubeAnalyticsProvider implements AnalyticsProvider {
   public readonly platform: SocialPlatform = 'YOUTUBE';
@@ -201,28 +207,47 @@ export class MockAnalyticsProvider implements AnalyticsProvider {
   }
 }
 
+const ANALYTICS_REQUIRED_ENV: Record<SocialPlatform, string[]> = {
+  YOUTUBE: ['GOOGLE_OAUTH_CLIENT_ID'],
+  INSTAGRAM: ['META_APP_ID'],
+  TIKTOK: ['TIKTOK_CLIENT_KEY'],
+};
+
 export function createAnalyticsProvider(
   platform: SocialPlatform,
   options?: { forceMock?: boolean }
 ): AnalyticsProvider {
-  if (options?.forceMock || process.env.NODE_ENV === 'test') {
+  const mockRequested =
+    options?.forceMock === true ||
+    isTestRuntime() ||
+    process.env.VIDEO_FACTORY_USE_MOCK_PROVIDERS === 'true';
+
+  if (mockRequested) {
+    if (isProductionRuntime()) {
+      throw new ProductionConfigError(
+        `Mock analytics provider is not allowed in production for platform ${platform}`
+      );
+    }
     return new MockAnalyticsProvider(platform);
+  }
+
+  const missing = ANALYTICS_REQUIRED_ENV[platform].filter((name) =>
+    isPlaceholderValue(process.env[name])
+  );
+  if (missing.length > 0) {
+    throw new ProductionConfigError(
+      `Analytics provider for ${platform} is not configured — missing/invalid env: ${missing.join(', ')}`
+    );
   }
 
   switch (platform) {
     case 'YOUTUBE':
-      return process.env.GOOGLE_OAUTH_CLIENT_ID
-        ? new YouTubeAnalyticsProvider()
-        : new MockAnalyticsProvider('YOUTUBE');
+      return new YouTubeAnalyticsProvider();
     case 'INSTAGRAM':
-      return process.env.META_APP_ID
-        ? new InstagramInsightsProvider()
-        : new MockAnalyticsProvider('INSTAGRAM');
+      return new InstagramInsightsProvider();
     case 'TIKTOK':
-      return process.env.TIKTOK_CLIENT_KEY
-        ? new TikTokAnalyticsProvider()
-        : new MockAnalyticsProvider('TIKTOK');
+      return new TikTokAnalyticsProvider();
     default:
-      return new MockAnalyticsProvider(platform);
+      throw new ProductionConfigError(`Unsupported analytics platform: ${platform}`);
   }
 }

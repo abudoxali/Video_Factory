@@ -8,32 +8,39 @@
         "responseMode": "onReceived",
         "options": {}
       },
+      "id": "node-vf04-webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [180, 240],
-      "id": "node-vf04-webhook"
+      "position": [
+        180,
+        240
+      ],
+      "webhookId": "vf-04-media-coordinator"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json;\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    job_id: body.job_id || 'job_media_' + Date.now(),\n    video_id: body.video_id,\n    scenes: body.scenes || [],\n    plan_status: body.plan_status || 'APPROVED',\n    received_at: new Date().toISOString()\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    video_id: body.video_id || null,\n    job_id: body.job_id || '',\n    publication_id: body.publication_id || null,\n    render_id: body.render_id || null,\n    scene_id: body.scene_id || null,\n    platforms: body.platforms || null,\n    account_ids: body.account_ids || null,\n    metadata: body.metadata || null,\n    received_at: new Date().toISOString()\n  }\n};"
       },
-      "name": "Validate & Parse Input",
+      "id": "node-vf04-validate",
+      "name": "Validate & Authenticate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 240],
-      "id": "node-vf04-parse"
+      "position": [
+        400,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/media/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -43,35 +50,92 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_media_prep_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"media.preparation_started\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"MEDIA_PREPARATION\",\n  \"progress\": 60,\n  \"message\": \"بدء تنسيق وتجهيز توليد وسائط المشاهد والتعليق الصوتي\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || ''\n}",
+        "options": {
+          "timeout": 600000
+        },
+        "onError": "continueRegularOutput"
       },
-      "name": "Notify Media Preparation",
+      "id": "node-vf04-execute",
+      "name": "Execute Real Media Pipeline",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [620, 240],
-      "id": "node-vf04-notify-prep"
+      "position": [
+        640,
+        240
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.item.json;\nconst scenes = input.scenes || [];\n\n// Group scenes by strategy for batched processing\nconst imageScenes = scenes.filter(s => s.mediaStrategy === 'AI_IMAGE' || s.mediaStrategy === 'MIXED');\nconst videoScenes = scenes.filter(s => s.mediaStrategy === 'AI_VIDEO');\nconst narrationScenes = scenes.filter(s => s.narration && s.narration.trim().length > 0);\n\nreturn {\n  json: {\n    ...input,\n    imageSceneCount: imageScenes.length,\n    videoSceneCount: videoScenes.length,\n    narrationSceneCount: narrationScenes.length,\n    status: 'MEDIA_PREPARED'\n  }\n};"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.success === true && $json.data && $json.data.allResolved === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "name": "Plan Strategy Batches",
-      "type": "n8n-nodes-base.code",
+      "id": "node-vf04-resolved",
+      "name": "All Media Resolved?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [840, 240],
-      "id": "node-vf04-plan-batches"
+      "position": [
+        880,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.data && $json.data.allReady === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-vf04-ready",
+      "name": "All Media Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        140
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL || 'http://localhost:5678' }}/webhook/vf-09-render-coordinator",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -80,39 +144,117 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_media_ready_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"media.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"MEDIA_READY\",\n  \"progress\": 100,\n  \"message\": \"تم الانتهاء من توليد وتخزين وسائط جميع المشاهد بنجاح في R2\"\n}"
+        "jsonBody": "={\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || '',\n  \"webhook_secret\": \"{{ $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET }}\"\n}",
+        "options": {
+          "timeout": 15000
+        },
+        "onError": "continueRegularOutput"
       },
-      "name": "Finalize Media Pipeline",
+      "id": "node-vf04-trigger-render",
+      "name": "Trigger Render Coordinator",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1060, 240],
-      "id": "node-vf04-finalize"
+      "position": [
+        1360,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "id": "node-vf04-wait",
+      "name": "Wait For Async Media",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        340
+      ],
+      "webhookId": "vf-04-wait"
     }
   ],
   "connections": {
     "Webhook Trigger": {
       "main": [
-        [{ "node": "Validate & Parse Input", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate & Authenticate",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Validate & Parse Input": {
+    "Validate & Authenticate": {
       "main": [
-        [{ "node": "Notify Media Preparation", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Real Media Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Notify Media Preparation": {
+    "Execute Real Media Pipeline": {
       "main": [
-        [{ "node": "Plan Strategy Batches", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "All Media Resolved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Plan Strategy Batches": {
+    "All Media Resolved?": {
       "main": [
-        [{ "node": "Finalize Media Pipeline", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "All Media Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait For Async Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Media Ready?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Render Coordinator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Async Media": {
+      "main": [
+        [
+          {
+            "node": "Execute Real Media Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "versionId": "vf-04-v3",
+  "id": "VF04MediaGenerationCoordinator",
+  "tags": []
 }

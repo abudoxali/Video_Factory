@@ -1,3 +1,4 @@
+import { assertMockProvidersAllowed } from '@video-factory/contracts';
 import type { StorageProvider, StorageProviderConfig } from './types';
 import { CloudflareR2Provider } from './r2';
 import { MockStorageProvider } from './mock';
@@ -15,6 +16,7 @@ export function createStorageProvider(
       return new CloudflareR2Provider(config);
     case 'mock':
     case 'test':
+      assertMockProvidersAllowed('storage-factory');
       return new MockStorageProvider();
     default:
       return new CloudflareR2Provider(config);

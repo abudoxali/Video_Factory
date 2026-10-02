@@ -131,6 +131,57 @@ export async function recordMediaRunTransaction(
   return record;
 }
 
+/**
+ * Returns the most recent media generation run for a scene/asset type.
+ * Used to resume asynchronous provider submissions (e.g. AI video) instead of
+ * re-submitting duplicates on workflow retries.
+ */
+export async function getLatestMediaRunForScene(
+  sceneId: string,
+  type: string
+): Promise<MediaRunEntity | null> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(mediaRuns)
+    .where(and(eq(mediaRuns.sceneId, sceneId), eq(mediaRuns.type, type)))
+    .orderBy(desc(mediaRuns.startedAt))
+    .limit(1);
+  return rows[0] || null;
+}
+
+/**
+ * Updates a media run record — truthful telemetry for provider submissions.
+ */
+export async function updateMediaRunStatus(
+  runId: string,
+  update: {
+    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    completedAt?: Date;
+    latencyMs?: number;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    outputMetadata?: Record<string, unknown> | null;
+    usageMetadata?: Record<string, unknown> | null;
+  }
+): Promise<MediaRunEntity | null> {
+  const db = getDb();
+  const rows = await db
+    .update(mediaRuns)
+    .set({
+      status: update.status,
+      completedAt: update.completedAt,
+      latencyMs: update.latencyMs,
+      errorCode: update.errorCode,
+      errorMessage: update.errorMessage,
+      outputMetadata: update.outputMetadata === undefined ? undefined : update.outputMetadata,
+      usageMetadata: update.usageMetadata === undefined ? undefined : update.usageMetadata,
+    })
+    .where(eq(mediaRuns.id, runId))
+    .returning();
+  return rows[0] || null;
+}
+
 export async function getVideoMediaAssets(videoId: string): Promise<MediaAssetEntity[]> {
   const db = getDb();
   return await db

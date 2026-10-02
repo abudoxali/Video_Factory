@@ -39,3 +39,10 @@ export class PublishMediaInvalidError extends PublishingError {
     this.name = 'PublishMediaInvalidError';
   }
 }
+
+export class PublishConfigError extends PublishingError {
+  constructor(message: string) {
+    super(message, 'PUBLISH_NOT_CONFIGURED', false);
+    this.name = 'PublishConfigError';
+  }
+}

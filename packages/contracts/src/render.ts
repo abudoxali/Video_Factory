@@ -359,6 +359,7 @@ export const RenderErrorCodeEnum = z.enum([
   'RENDER_DISK_ERROR',
   'RENDER_UPLOAD_ERROR',
   'RENDER_VALIDATION_ERROR',
+  'RENDER_ENGINE_NOT_CONFIGURED',
 ]);
 
 export type RenderErrorCode = z.infer<typeof RenderErrorCodeEnum>;
@@ -372,6 +373,7 @@ export const ArabicRenderErrorMap: Record<RenderErrorCode, string> = {
   RENDER_DISK_ERROR: 'مساحة تخزين الملفات المؤقتة غير كافية',
   RENDER_UPLOAD_ERROR: 'فشل رفع ملف الفيديو النهائي المكتمل إلى R2',
   RENDER_VALIDATION_ERROR: 'فشل الفحص الفني لجودة وأبعاد وحاوية ملف الفيديو MP4',
+  RENDER_ENGINE_NOT_CONFIGURED: 'محرك إخراج الفيديو الحقيقي (Remotion) غير مكوّن في هذا النظام',
 };
 
 export function getArabicRenderError(code: string): string {

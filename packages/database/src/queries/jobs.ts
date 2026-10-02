@@ -185,6 +185,54 @@ export async function applyJobCallbackEvent(
   });
 }
 
+/**
+ * Creates a dedicated phase job (MEDIA_PREPARATION / RENDER_PREPARATION /
+ * PUBLISHING) for a video whose initial planning job has already completed.
+ * Used by internal orchestration endpoints so downstream phases keep a real,
+ * append-only job/event trail instead of writing against a terminal job.
+ */
+export async function createPhaseJobTransaction(params: {
+  videoId: string;
+  stage: string;
+  progress?: number;
+  message?: string;
+}): Promise<VideoJob> {
+  const db = getDb();
+  const jobId = createId('job');
+
+  return await db.transaction(async (tx) => {
+    const [job] = await tx
+      .insert(videoJobs)
+      .values({
+        id: jobId,
+        videoId: params.videoId,
+        status: 'PROCESSING',
+        progress: params.progress ?? 0,
+        currentStage: params.stage,
+        startedAt: new Date(),
+      })
+      .returning();
+
+    await tx
+      .update(videos)
+      .set({ status: 'PROCESSING', updatedAt: new Date() })
+      .where(eq(videos.id, params.videoId));
+
+    await tx.insert(jobEvents).values({
+      id: createId('evt'),
+      jobId,
+      eventId: `evt_phase_${params.stage.toLowerCase()}_${jobId}`,
+      eventType: 'PHASE_STARTED',
+      stage: params.stage,
+      progress: params.progress ?? 0,
+      message: params.message || `بدء مرحلة ${params.stage}`,
+      metadata: { phase: params.stage },
+    });
+
+    return job;
+  });
+}
+
 export async function appendDiagnosticJobEvent(params: {
   jobId: string;
   eventType: string;

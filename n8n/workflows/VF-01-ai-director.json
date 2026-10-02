@@ -8,32 +8,38 @@
         "responseMode": "onReceived",
         "options": {}
       },
+      "id": "node-vf01-webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [180, 240],
-      "id": "node-vf01-webhook"
+      "position": [
+        180,
+        240
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json;\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || body,\n    prompt_version: 'director/v1'\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    video_id: body.video_id,\n    job_id: body.job_id || '',\n    received_at: new Date().toISOString()\n  }\n};"
       },
-      "name": "Parse & Validate Input",
+      "id": "node-vf01-validate",
+      "name": "Validate & Authenticate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 240],
-      "id": "node-vf01-parse"
+      "position": [
+        400,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/planning/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -43,34 +49,63 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_dir_start_\" + $json.job_id + \"_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"planning.director_started\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 15,\n  \"message\": \"جاري تحليل فكرة الفيديو وإعداد التوجيه الإبداعي بواسطة AI Director\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id,\n  \"stage\": \"AI_DIRECTOR\"\n}",
+        "options": {
+          "timeout": 300000
+        },
+        "onError": "continueRegularOutput"
       },
-      "name": "Notify Director Stage",
+      "id": "node-vf01-execute",
+      "name": "Execute Real AI Director",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [620, 240],
-      "id": "node-vf01-notify"
+      "position": [
+        640,
+        240
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Prepare AI Director Structured Prompt Parameters\nconst input = $input.item.json;\nconst req = input.request || {};\n\nreturn {\n  json: {\n    job_id: input.job_id,\n    video_id: input.video_id,\n    stage: 'AI_DIRECTOR',\n    brief: {\n      workingTitle: req.title || 'فيديو جديد',\n      coreIdea: req.prompt || '',\n      objective: 'إنتاج محتوى جذاب وتفاعلي على منصة ' + (req.platform || 'tiktok'),\n      targetAudience: 'جمهور المنصات الرقمية ورواد المحتوى العربي',\n      platform: req.platform || 'tiktok',\n      videoType: req.type || 'short',\n      targetDurationSeconds: req.duration_seconds || 30,\n      language: req.language || 'ar',\n      tone: 'حماسي واحترافي ومباشر',\n      contentAngle: 'طرح مشوق يركز على الفائدة السريعة',\n      hookStrategy: 'جملة افتتاحية قوية تجذب الانتباه في أول 3 ثوانٍ',\n      narrativeStyle: 'مشكلة -> تفصيل -> دعوة للتفاعل',\n      visualDirection: 'لقطات ديناميكية عصرية مع نصوص توضيحية جريئة',\n      pacing: 'fast',\n      keyPoints: ['الجاذبية', 'الوضوح', 'الدعوة للمشاركة'],\n      constraints: ['الالتزام بالمدة المحددة بدقة'],\n      requiresResearch: false\n    }\n  }\n};"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "director-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "name": "Build Creative Brief",
-      "type": "n8n-nodes-base.code",
+      "id": "node-vf01-outcome",
+      "name": "Brief Generated?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [840, 240],
-      "id": "node-vf01-build-brief"
+      "position": [
+        880,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/planning",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-callback-secret",
-              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
             },
             {
               "name": "Content-Type",
@@ -80,39 +115,108 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id,\n  \"stage\": \"AI_DIRECTOR\",\n  \"brief\": $json.brief,\n  \"progress\": 25,\n  \"message\": \"تم إعداد التوجيه الإبداعي بنجاح\"\n}"
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_director_\" + Date.now(),\n  \"job_id\": $('Execute Real AI Director').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.brief_ready\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"SCRIPT_GENERATION\",\n  \"progress\": 35,\n  \"message\": \"اكتمل التوجيه الإبداعي الحقيقي وحُفظ الموجز\"\n}",
+        "onError": "continueRegularOutput"
       },
-      "name": "Persist Brief To App",
+      "id": "node-vf01-ok",
+      "name": "Callback: Brief Ready",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1060, 240],
-      "id": "node-vf01-persist"
+      "position": [
+        1120,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VIDEO_FACTORY_BASE_URL || $env.VIDEO_FACTORY_API_URL || 'http://localhost:3000' }}/api/internal/n8n/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-callback-secret",
+              "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_director_fail_\" + Date.now(),\n  \"job_id\": $('Execute Real AI Director').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل التوجيه الإبداعي: \" + ($json.error || 'provider failure')\n}",
+        "onError": "continueRegularOutput"
+      },
+      "id": "node-vf01-fail",
+      "name": "Callback: Director Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        340
+      ]
     }
   ],
   "connections": {
     "Webhook Trigger": {
       "main": [
-        [{ "node": "Parse & Validate Input", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate & Authenticate",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Parse & Validate Input": {
+    "Validate & Authenticate": {
       "main": [
-        [{ "node": "Notify Director Stage", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Real AI Director",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Notify Director Stage": {
+    "Execute Real AI Director": {
       "main": [
-        [{ "node": "Build Creative Brief", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Brief Generated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Build Creative Brief": {
+    "Brief Generated?": {
       "main": [
-        [{ "node": "Persist Brief To App", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Callback: Brief Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Callback: Director Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "versionId": "vf-01-v3",
+  "id": "VF01AiDirector",
+  "tags": []
 }

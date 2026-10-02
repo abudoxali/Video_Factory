@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@remotion/bundler": "4.0.513",
+    "@remotion/renderer": "4.0.513",
     "@video-factory/contracts": "workspace:*",
     "@video-factory/database": "workspace:*",
     "@video-factory/providers": "workspace:*",

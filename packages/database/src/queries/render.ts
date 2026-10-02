@@ -103,7 +103,7 @@ export async function createRenderTransaction(
       await tx
         .update(videoJobs)
         .set({
-          stage: 'RENDERING',
+          currentStage: 'RENDERING',
           progress: 85,
           updatedAt: new Date(),
         })
@@ -112,7 +112,8 @@ export async function createRenderTransaction(
       await tx.insert(jobEvents).values({
         id: `evt_rnd_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         jobId: options.jobId,
-        event: 'render.created',
+        eventId: `evt_render_created_${renderId}_${Date.now()}`,
+        eventType: 'render.created',
         stage: 'RENDERING',
         progress: 85,
         message: `تم إنشاء مهمة الإخراج للإصدار v${version}`,
@@ -228,7 +229,7 @@ export async function updateRenderStatusTransaction(
         .update(videoJobs)
         .set({
           status: isComplete ? 'COMPLETED' : isFailed ? 'FAILED' : 'PROCESSING',
-          stage: isComplete ? 'RENDER_READY' : isFailed ? 'ERROR' : 'RENDERING',
+          currentStage: isComplete ? 'RENDER_READY' : isFailed ? 'ERROR' : 'RENDERING',
           progress: isComplete ? 100 : isFailed ? 0 : 90,
           errorMessage: options?.errorMessage || null,
           updatedAt: new Date(),
@@ -238,7 +239,8 @@ export async function updateRenderStatusTransaction(
       await tx.insert(jobEvents).values({
         id: `evt_rnd_status_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         jobId: options.jobId,
-        event: isComplete ? 'render.completed' : isFailed ? 'render.failed' : 'render.progress',
+        eventId: `evt_render_${update.status.toLowerCase()}_${renderId}_${Date.now()}`,
+        eventType: isComplete ? 'render.completed' : isFailed ? 'render.failed' : 'render.progress',
         stage: isComplete ? 'RENDER_READY' : isFailed ? 'ERROR' : 'RENDERING',
         progress: isComplete ? 100 : isFailed ? 0 : 90,
         message:

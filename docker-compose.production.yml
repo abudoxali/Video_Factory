@@ -1,4 +1,12 @@
-version: '3.8'
+# Production deployment for Video Factory.
+#
+# NOTE — render-worker: a dedicated render-worker service is intentionally
+# NOT part of this deployment. The worker package has no standalone runtime
+# entrypoint yet and Remotion engine wiring is pending; rendering currently
+# executes in-process inside the web container via
+# `@video-factory/render-worker/service`. A separate worker service will be
+# reintroduced when its real runtime exists — until then it would only run a
+# meaningless restart loop.
 
 services:
   web:
@@ -12,38 +20,51 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-videofactory}
-      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
-      - SOCIAL_TOKEN_ENCRYPTION_KEY=${SOCIAL_TOKEN_ENCRYPTION_KEY}
-      - VIDEO_FACTORY_N8N_CALLBACK_SECRET=${VIDEO_FACTORY_N8N_CALLBACK_SECRET}
+      # Public application URL — must be the real external origin
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      # PostgreSQL
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-videofactory}
+      # n8n orchestration
+      - N8N_VIDEO_FACTORY_WEBHOOK_URL=${N8N_VIDEO_FACTORY_WEBHOOK_URL:?required}
+      - N8N_VIDEO_FACTORY_WEBHOOK_SECRET=${N8N_VIDEO_FACTORY_WEBHOOK_SECRET:?required}
+      - VIDEO_FACTORY_N8N_CALLBACK_SECRET=${VIDEO_FACTORY_N8N_CALLBACK_SECRET:?required}
+      # Session & token security
+      - VIDEO_FACTORY_SESSION_SECRET=${VIDEO_FACTORY_SESSION_SECRET:?required}
+      - SOCIAL_TOKEN_ENCRYPTION_KEY=${SOCIAL_TOKEN_ENCRYPTION_KEY:?required}
+      # Cloudflare R2
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:?required}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:?required}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:?required}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:?required}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_PUBLIC_BASE_URL=${R2_PUBLIC_BASE_URL}
+      # AI providers
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?required}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:?required}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Social platform OAuth
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
       - META_APP_ID=${META_APP_ID}
       - META_APP_SECRET=${META_APP_SECRET}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION}
       - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY}
       - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET}
-    depends_on:
-      - postgres
-
-  render-worker:
-    build:
-      context: .
-      dockerfile: apps/render-worker/Dockerfile
-    container_name: vf-render-worker
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-videofactory}
-      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      # Launch scope feature flags
+      - ENABLE_YOUTUBE=${ENABLE_YOUTUBE:-true}
+      - ENABLE_INSTAGRAM=${ENABLE_INSTAGRAM:-true}
+      - ENABLE_TIKTOK=${ENABLE_TIKTOK:-true}
+      # Remotion engine wiring — the web image ships a pre-bundled
+      # composition at /app/render-bundle plus system Chromium, so real
+      # rendering works in-process out of the box. Override only to point at
+      # an external bundle or a different browser binary.
+      - REMOTION_SERVE_URL=${REMOTION_SERVE_URL:-/app/render-bundle}
+      - REMOTION_BROWSER_EXECUTABLE=${REMOTION_BROWSER_EXECUTABLE:-/usr/bin/chromium}
+      - REMOTION_CHROME_MODE=${REMOTION_CHROME_MODE:-chrome-for-testing}
+      - REMOTION_ENTRY_POINT=${REMOTION_ENTRY_POINT}
+      - REMOTION_PUBLIC_DIR=${REMOTION_PUBLIC_DIR}
     depends_on:
       - postgres
 
@@ -53,7 +74,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — no default is allowed in production}
       - POSTGRES_DB=${POSTGRES_DB:-videofactory}
     ports:
       - "5432:5432"

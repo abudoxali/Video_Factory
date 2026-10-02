@@ -11,9 +11,9 @@ import { TransitionWrapper } from '../transitions/TransitionWrapper';
 import { BrandingOverlay } from '../branding/BrandingOverlay';
 import type { RenderManifest, RenderScene } from '@video-factory/contracts';
 
-export interface MainVideoCompositionProps {
+export type MainVideoCompositionProps = {
   manifest: RenderManifest;
-}
+};
 
 export const MainVideoComposition: React.FC<MainVideoCompositionProps> = ({ manifest }) => {
   const { width, height, fps } = manifest.composition;

@@ -1,20 +1,35 @@
 import crypto from 'crypto';
+import {
+  isPlaceholderValue,
+  isProductionRuntime,
+  ProductionConfigError,
+} from '@video-factory/contracts';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96 bits for GCM
 const AUTH_TAG_LENGTH = 16; // 128 bits
 const ENCRYPTION_VERSION = 'v1';
 
+const DEV_FALLBACK_SECRET = 'video_factory_default_dev_encryption_secret_key_32_bytes_min!';
+
 /**
- * Derives a 32-byte key from the environment encryption key
+ * Derives a 32-byte key from the environment encryption key.
+ * In production the SOCIAL_TOKEN_ENCRYPTION_KEY must be real — the embedded
+ * development fallback is never acceptable there.
  */
 function getEncryptionKey(overrideKey?: string): Buffer {
-  const secret =
-    overrideKey ||
-    process.env.SOCIAL_TOKEN_ENCRYPTION_KEY ||
-    'video_factory_default_dev_encryption_secret_key_32_bytes_min!';
+  const secret = overrideKey || process.env.SOCIAL_TOKEN_ENCRYPTION_KEY;
 
-  return crypto.createHash('sha256').update(secret).digest();
+  if (isPlaceholderValue(secret)) {
+    if (isProductionRuntime()) {
+      throw new ProductionConfigError(
+        'SOCIAL_TOKEN_ENCRYPTION_KEY is missing or a placeholder in production; refusing to encrypt/decrypt social tokens with a development key'
+      );
+    }
+    return crypto.createHash('sha256').update(DEV_FALLBACK_SECRET).digest();
+  }
+
+  return crypto.createHash('sha256').update(secret as string).digest();
 }
 
 /**
