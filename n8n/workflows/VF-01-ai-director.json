@@ -51,7 +51,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id,\n  \"stage\": \"AI_DIRECTOR\"\n}) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
@@ -116,7 +122,15 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_director_\" + Date.now(),\n  \"job_id\": $('Execute Real AI Director').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.brief_ready\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"SCRIPT_GENERATION\",\n  \"progress\": 35,\n  \"message\": \"اكتمل التوجيه الإبداعي الحقيقي وحُفظ الموجز\"\n}) }}",
-        "onError": "continueRegularOutput"
+        "onError": "continueRegularOutput",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "node-vf01-ok",
       "name": "Callback: Brief Ready",
@@ -147,7 +161,15 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_director_fail_\" + Date.now(),\n  \"job_id\": $('Execute Real AI Director').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل التوجيه الإبداعي: \" + ($json.error || 'provider failure')\n}) }}",
-        "onError": "continueRegularOutput"
+        "onError": "continueRegularOutput",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "node-vf01-fail",
       "name": "Callback: Director Failed",

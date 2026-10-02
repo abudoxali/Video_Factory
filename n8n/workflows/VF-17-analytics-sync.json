@@ -15,7 +15,10 @@
       "name": "Hourly Analytics Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [180, 240],
+      "position": [
+        180,
+        240
+      ],
       "id": "node-vf17-schedule"
     },
     {
@@ -30,24 +33,42 @@
               "value": "={{ $env.VIDEO_FACTORY_N8N_CALLBACK_SECRET || 'your_callback_shared_secret_here' }}"
             }
           ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         }
       },
       "name": "Execute Analytics Sync Batch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [400, 240],
+      "position": [
+        400,
+        240
+      ],
       "id": "node-vf17-sync"
     }
   ],
   "connections": {
     "Hourly Analytics Schedule": {
       "main": [
-        [{ "node": "Execute Analytics Sync Batch", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Execute Analytics Sync Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "id": "VF17AnalyticsSync"
 }

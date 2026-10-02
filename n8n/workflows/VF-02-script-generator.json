@@ -52,7 +52,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id,\n  \"stage\": \"SCRIPT_GENERATION\"\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
@@ -118,7 +124,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Execute Real Script Generation').item.json.job_id || $('Validate & Authenticate').item.json.job_id + \"_\" + Date.now(),\n  \"job_id\": $('Execute Real Script Generation').item.json.job_id || $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.script_ready\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"SCENE_PLANNING\",\n  \"progress\": 60,\n  \"message\": \"اكتمل توليد السيناريو الحقيقي وحُفظ النص السردي\"\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
@@ -152,7 +164,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 40,\n  \"message\": \"فشل توليد السيناريو: '\" + ($json.error || 'provider failure') + \"'\"\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },

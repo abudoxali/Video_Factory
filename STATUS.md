@@ -195,7 +195,7 @@ NOT READY — do not deploy without completing the "Exact Next Execution" steps.
 - `docker compose -f docker-compose.production.yml config` (temp test env): PASS.
 - `docker build -f apps/web/Dockerfile -t video-factory-web:runtime-gate .`: **PASS** — built, booted healthy, `/api/health/live` 200, real in-container MP4 render verified.
 
-## Live Integration Preflight (2026-10-02)
+## Production Reality Gate — Part 5: Live Integration Preflight (2026-10-02)
 
 ### Canonical repository
 - Repo: `abudoxali/Video_Factory` at `C:UsersAbudDesktopGitHubVideo_Factory` (real git checkout, remote verified).
@@ -240,4 +240,12 @@ NOT READY — do not deploy without completing the "Exact Next Execution" steps.
 3. Re-run the Golden Path on the live local stack already proven here: `POST /api/videos` → VF-00 → planning → approval → media → render → publish; collect evidence; only then mark Golden Path VERIFIED.
 
 ## Last Verification
-2026-10-02 — **Live local integration verified**: canonical repo `abudoxali/Video_Factory` `main` @ `0ae075c`; Postgres migrated (18 tables); existing n8n install running with all 18 workflows imported+active; webhook+callback auth verified (bad secrets rejected in-execution; good secrets accepted and reach real internal APIs); real `POST /api/videos` → n8n VF-00 → `/api/internal/planning/execute` → real Gemini HTTP call → truthful `planning.failed`/job `FAILED` persisted on the placeholder key. Unit suite green (142/142 + 2 env-gated skips; contracts re-verified 30/30 after workflow fixes). Golden Path **NOT VERIFIED** — blocked solely by placeholder external credentials. Release status: **NOT READY**.
+2026-10-02 (re-verified) — **Live local integration verified**: canonical repo `abudoxali/Video_Factory` `main` @ HEAD `3235175`+workflow fixes; Postgres 18/18 tables; n8n 1.76.1 container `video-factory-n8n` healthy on :5678 with **exactly 18 active VF workflows** (VF-16/VF-17 ids now pinned; 6 unpinned duplicate imports deactivated); webhook secret enforced (invalid → execution rejected, valid → 202 + real `job_id`); VF-16/VF-17 scheduled executions authenticate and return HTTP 200.
+
+Golden Path smoke re-run: `POST /api/videos` → `vid_FVwWOkEhJ1sD7L0B`/`job_muYLmoDKmcBrutVn` → VF-00 → authenticated `job.progress` event → `/api/internal/planning/execute` → **real PlanningEngine → real Google Gemini HTTP call** → placeholder key rejected (`INVALID_ARGUMENT`) → n8n failure-callback ran → job persisted `FAILED`/`ERROR` with the real provider message. n8n execution completed `success` (workflow-level), job state truthful (FAILED). No fabrication anywhere.
+
+Live-run fixes since `3235175`: (a) `responseMode` top-level on VF-00 webhook; (b) `process.env`→`$env` in 16 validators; (c) `JSON.stringify` wrapping 27 `jsonBody` params; (d) `neverError` on all 32 internal httpRequest nodes so non-2xx provider failures route to failure branches instead of aborting the workflow; (e) VF-00 execute node `$json` refs repointed to the Validate node output; (f) literal `"{{ $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET }}"` corrected to a real expression in 5 trigger nodes; (g) stable `id` pinned on VF-16/VF-17 so imports upsert.
+
+Credentials matrix: Gemini INVALID (placeholder, real API rejected) | OpenAI PLACEHOLDER | ElevenLabs PLACEHOLDER | R2 PLACEHOLDER | Google/YouTube OAuth PLACEHOLDER | Meta/Instagram PLACEHOLDER | TikTok PLACEHOLDER | `social_accounts`: 0 connected. VPS `167.99.157.6`: **UNREACHABLE** (SSH timeout).
+
+Unit suite green (142/142 + 2 env-gated skips; contracts 30/30 after all workflow fixes). Golden Path **NOT VERIFIED** — blocked solely by missing real external credentials. Release status: **NOT READY**.

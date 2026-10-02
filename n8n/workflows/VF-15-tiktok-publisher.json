@@ -52,7 +52,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"publication_id\": $json.publication_id,\n  \"expected_platform\": \"TIKTOK\",\n  \"job_id\": $json.job_id || ''\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },

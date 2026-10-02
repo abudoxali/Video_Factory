@@ -66,7 +66,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تنفيذ التخطيط الإنتاجي الحقيقي عبر خدمة التخطيط\"\n}) }}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تنفيذ التخطيط الإنتاجي الحقيقي عبر خدمة التخطيط\"\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "node_callback_init",
       "name": "Callback: Planning Started",
@@ -96,9 +104,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"video_id\": $('Validate & Authenticate').item.json.video_id\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
@@ -162,7 +176,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_ready_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"PLAN_READY\",\n  \"progress\": 100,\n  \"message\": \"اكتمل التخطيط الإنتاجي الحقيقي — الخطة جاهزة للاعتماد والمراجعة\"\n}) }}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_ready_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"PLAN_READY\",\n  \"progress\": 100,\n  \"message\": \"اكتمل التخطيط الإنتاجي الحقيقي — الخطة جاهزة للاعتماد والمراجعة\"\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "node_planning_complete",
       "name": "Callback: Plan Ready",
@@ -192,7 +214,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_failed_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل تنفيذ التخطيط الحقيقي: \" + ($json.error || $json.message || 'provider failure')\n}) }}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_failed_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل تنفيذ التخطيط الحقيقي: \" + ($json.error || $json.message || 'provider failure')\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "node_planning_failed",
       "name": "Callback: Planning Failed",

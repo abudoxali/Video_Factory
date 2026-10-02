@@ -52,7 +52,13 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || ''\n}) }}",
         "options": {
-          "timeout": 600000
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
@@ -144,9 +150,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || '',\n  \"webhook_secret\": \"{{ $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET }}\"\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || '',\n  \"webhook_secret\": $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET\n}) }}",
         "options": {
-          "timeout": 15000
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         },
         "onError": "continueRegularOutput"
       },
