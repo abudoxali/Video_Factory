@@ -5,9 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "vf-job-orchestrator",
-        "options": {
-          "responseMode": "responseNode"
-        }
+        "responseMode": "responseNode"
       },
       "id": "node_webhook_trigger",
       "name": "Webhook Trigger",
@@ -21,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Authenticate + validate the incoming job payload.\nconst body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.job_id || !body.video_id) {\n  throw new Error('Invalid start payload: job_id and video_id are required');\n}\n\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || {},\n    version: body.version || '1.0',\n    received_at: new Date().toISOString()\n  }\n};"
+        "jsCode": "// Authenticate + validate the incoming job payload.\nconst body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.job_id || !body.video_id) {\n  throw new Error('Invalid start payload: job_id and video_id are required');\n}\n\nreturn {\n  json: {\n    job_id: body.job_id,\n    video_id: body.video_id,\n    request: body.request || {},\n    version: body.version || '1.0',\n    received_at: new Date().toISOString()\n  }\n};"
       },
       "id": "node_validate_input",
       "name": "Validate & Authenticate",
@@ -68,7 +66,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تنفيذ التخطيط الإنتاجي الحقيقي عبر خدمة التخطيط\"\n}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $json.job_id + \"_init_\" + Date.now(),\n  \"job_id\": $json.job_id,\n  \"event\": \"job.progress\",\n  \"status\": \"PROCESSING\",\n  \"stage\": \"AI_DIRECTOR\",\n  \"progress\": 10,\n  \"message\": \"بدء تنفيذ التخطيط الإنتاجي الحقيقي عبر خدمة التخطيط\"\n}) }}"
       },
       "id": "node_callback_init",
       "name": "Callback: Planning Started",
@@ -98,7 +96,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id\n}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"job_id\": $json.job_id,\n  \"video_id\": $json.video_id\n}) }}",
         "options": {
           "timeout": 600000
         },
@@ -164,7 +162,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_ready_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"PLAN_READY\",\n  \"progress\": 100,\n  \"message\": \"اكتمل التخطيط الإنتاجي الحقيقي — الخطة جاهزة للاعتماد والمراجعة\"\n}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_ready_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.ready\",\n  \"status\": \"COMPLETED\",\n  \"stage\": \"PLAN_READY\",\n  \"progress\": 100,\n  \"message\": \"اكتمل التخطيط الإنتاجي الحقيقي — الخطة جاهزة للاعتماد والمراجعة\"\n}) }}"
       },
       "id": "node_planning_complete",
       "name": "Callback: Plan Ready",
@@ -194,7 +192,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_failed_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل تنفيذ التخطيط الحقيقي: \" + ($json.error || $json.message || 'provider failure')\n}"
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"event_id\": \"evt_\" + $('Validate & Authenticate').item.json.job_id + \"_plan_failed_\" + Date.now(),\n  \"job_id\": $('Validate & Authenticate').item.json.job_id,\n  \"event\": \"planning.failed\",\n  \"status\": \"FAILED\",\n  \"stage\": \"ERROR\",\n  \"progress\": 10,\n  \"message\": \"فشل تنفيذ التخطيط الحقيقي: \" + ($json.error || $json.message || 'provider failure')\n}) }}"
       },
       "id": "node_planning_failed",
       "name": "Callback: Planning Failed",

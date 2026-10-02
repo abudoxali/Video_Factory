@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = process.env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    video_id: body.video_id || null,\n    job_id: body.job_id || '',\n    publication_id: body.publication_id || null,\n    render_id: body.render_id || null,\n    scene_id: body.scene_id || null,\n    platforms: body.platforms || null,\n    account_ids: body.account_ids || null,\n    metadata: body.metadata || null,\n    received_at: new Date().toISOString()\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst headers = $input.item.json.headers || {};\nconst secret = $env.N8N_VIDEO_FACTORY_WEBHOOK_SECRET;\nconst presented = body.webhook_secret || headers['x-webhook-secret'] || headers['X-Webhook-Secret'];\nif (!secret || presented !== secret) {\n  throw new Error('Unauthorized: invalid or missing webhook secret');\n}\nif (!body.video_id) throw new Error('video_id is required');\nreturn {\n  json: {\n    video_id: body.video_id || null,\n    job_id: body.job_id || '',\n    publication_id: body.publication_id || null,\n    render_id: body.render_id || null,\n    scene_id: body.scene_id || null,\n    platforms: body.platforms || null,\n    account_ids: body.account_ids || null,\n    metadata: body.metadata || null,\n    received_at: new Date().toISOString()\n  }\n};"
       },
       "id": "node-vf12-validate",
       "name": "Validate & Authenticate",
@@ -50,7 +50,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || '',\n  \"render_id\": $json.render_id || '',\n  \"platforms\": $json.platforms,\n  \"account_ids\": $json.account_ids,\n  \"metadata\": $json.metadata\n}",
+        "jsonBody": "={{ JSON.stringify({\n  \"version\": \"1.0\",\n  \"video_id\": $json.video_id,\n  \"job_id\": $json.job_id || '',\n  \"render_id\": $json.render_id || '',\n  \"platforms\": $json.platforms,\n  \"account_ids\": $json.account_ids,\n  \"metadata\": $json.metadata\n}) }}",
         "options": {
           "timeout": 600000
         },
