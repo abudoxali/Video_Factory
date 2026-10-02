@@ -1,135 +1,114 @@
 # Video Factory Status
 
+## Last Fresh Audit
+2026-10-02
+
+## Repository
+- Connected repository: `abudoxali/Video_Factory`
+- Branch: `main`
+- Audited baseline commit: `6cfcb38fbf6af0ab6d0aac6dd6716134a2b42a0f`
+
 ## Overall Completion
-95%
+- Historical feature/code-completion estimate: **95%**.
+- This number must **not** be interpreted as production release readiness.
+- Production Golden Path status: **NOT VERIFIED**.
+- Release status: **BLOCKED** pending the production-integrity fixes below and a real live Golden Path execution.
 
-## Current Phase
-Final Release Verification
+## Verified Repository Surface
+- Arabic-first RTL Next.js web application is implemented.
+- PostgreSQL schema is organized into 18 canonical schema modules/tables and migrations `0000` through `0004` are present.
+- Exactly 18 n8n workflow definitions exist: `VF-00` through `VF-17`.
+- Provider packages exist for LLM planning, image/video generation, ElevenLabs voice, Cloudflare R2, publishing, and analytics.
+- Social publishing provider implementations exist for YouTube, Instagram, and TikTok.
+- Remotion composition/components exist under `apps/render-worker`.
+- Production Docker definitions exist for web, render-worker, and PostgreSQL.
+- Automated test suites exist across contracts, database, providers, render worker, and web.
 
-## Phase Status
-PASS
+## Critical Fresh-Audit Findings
 
-## Release Status
-READY
+### 1. n8n workflow family is not a real end-to-end production orchestrator yet
+- `VF-01`, `VF-02`, and `VF-03` build deterministic/hard-coded brief, narration, and scene payloads in n8n Code nodes instead of invoking the real `PlanningEngine` / configured LLM provider.
+- `VF-04` coordinates counters/events but does not invoke media-generation providers.
+- `VF-05`, `VF-06`, and `VF-07` emit generation progress and then persist `READY` media state without performing image/video/voice generation themselves.
+- `VF-08` reports R2 validation without executing an R2 integrity check.
+- `VF-09` and `VF-10` report render/upload progress without invoking the render engine.
+- `VF-11` reports QA success and persists a supplied render payload without performing media QA.
+- `VF-12` routes/records distribution progress but does not dispatch real platform publishing.
+- `VF-13`, `VF-14`, and `VF-15` report platform publishing progress but do not call the platform APIs.
+- `VF-16` and `VF-17` are scheduled HTTP triggers for reconciliation/analytics.
+- Audited workflow files are committed with `active: false`; production activation/import has not been verified.
 
-## Golden Path
-- **Status**: VERIFIED & CODE COMPLETE (PASS).
-- **End-to-End Orchestration**:
-  1. **Video Request Submission**: Arabic RTL web interface (`/create`) captures title, prompt, duration (15–30s), aspect ratio (`9:16`), language (`ar`), and platform target.
-  2. **Database Ingestion**: Creates `videos` and `video_jobs` records in PostgreSQL with UUID identifiers and audit timestamps.
-  3. **Job Initiation**: Web application dispatches authenticated webhook payload to n8n `VF-00 Core Job Orchestrator`.
-  4. **AI Director (`VF-01`)**: Analyzes creative brief, target audience, tone, hook strategy, and visual direction -> persists to `video_briefs`.
-  5. **Script Generator (`VF-02`)**: Generates high-retention Arabic narration and section breakdown -> persists to `video_scripts`.
-  6. **Scene Planner (`VF-03`)**: Formulates ordered visual scenes, prompt descriptions, media strategy (`AI_IMAGE`, `AI_VIDEO`, `MOTION_GRAPHICS`), and timeline calculation -> persists to `scenes` and `video_chapters`.
-  7. **Plan Approval**: Human reviewer approves plan in Arabic UI (`/videos/[id]`) -> transitions `planStatus` to `APPROVED`.
-  8. **Media Coordination (`VF-04`–`VF-08`)**: Generates visual media (Gemini Native Images / Google Video) and ElevenLabs Arabic voice audio -> uploads to Cloudflare R2 -> registers `media_assets` with SHA-256 checksums.
-  9. **Render Assembly (`VF-09`–`VF-11`)**: Compiles canonical `RenderManifest` -> executes Remotion Render Worker (`apps/render-worker`) -> produces H.264/AAC MP4 with synced RTL Arabic captions, Cairo font, and audio ducking -> uploads final MP4 to R2 -> registers `renders` record.
-  10. **Distribution & Analytics (`VF-12`–`VF-17`)**: Multi-platform publishing to YouTube, Instagram Reels, and TikTok via AES-256-GCM encrypted credentials -> tracks platform IDs -> periodic reconciliation and official analytics snapshots.
+### 2. Render output is currently simulated
+- `RenderService.generateVideoFile()` does not invoke Remotion/Chromium/FFmpeg. It returns a small synthetic MP4-like header/payload buffer.
+- Therefore the current render test does not prove real video rendering.
+- The web render route directly instantiates `RenderService` from the render-worker package instead of calling a deployed render-worker service.
+- The render-worker Docker entrypoint runs `dist/index.js`, but `src/index.ts` only exports modules and starts no server/queue/worker loop.
 
-## Live PostgreSQL
-- **Schema & Migrations**: Migrations `0000` through `0004` fully generated and verified in `packages/database/drizzle/` (`0000_flashy_warhawk.sql`, `0001_serious_tombstone.sql`, `0002_supreme_rafael_vega.sql`, `0003_goofy_doctor_octopus.sql`, `0004_rainy_beyonder.sql`).
-- **Tables (18 total)**: `users`, `projects`, `videos`, `video_jobs`, `job_events`, `video_briefs`, `video_scripts`, `video_chapters`, `scenes`, `ai_runs`, `media_assets`, `media_runs`, `renders`, `render_runs`, `social_accounts`, `publications`, `publication_attempts`, `analytics_snapshots`.
-- **Integrity**: Foreign keys with `onDelete: cascade`, compound indexes on query paths, and unique idempotency constraints on `(userId, idempotencyKey)` and `(userId, platform, platformUserId)`.
+### 3. Production container packaging is inconsistent
+- `apps/web/Dockerfile` expects `.next/standalone`.
+- `apps/web/next.config.mjs` does not currently enable `output: 'standalone'`.
+- The web container is Alpine and does not install the Chromium/FFmpeg runtime expected for real Remotion rendering, while the separate render-worker container that has those dependencies is not wired into the web render route.
 
-## Live n8n
-- **Workflow Family (VF-00 through VF-17)**: 18 canonical workflow definitions verified as valid JSON in `n8n/workflows/`.
-- **Credential Protection**: Zero secrets or credentials embedded in workflow files; all URLs and secrets parameterized via `$env.VIDEO_FACTORY_API_URL` and `$env.VIDEO_FACTORY_N8N_CALLBACK_SECRET`.
-- **Execution Ready**: Workflows can be imported directly into the standalone n8n instance at `http://localhost:5678`.
+### 4. Production environment handling is fail-open
+- `docker-compose.production.yml` does not pass all required runtime variables, including the n8n outbound webhook URL/secret and AI/voice provider variables required by the current code path.
+- `apps/web/src/lib/env.ts` supplies localhost/development defaults and falls back to them even in production instead of failing fast.
+- R2 provider construction also has dummy endpoint/credential fallbacks instead of a production configuration gate.
 
-## Live AI Planning
-- **Engine**: `PlanningEngine` (`packages/providers/src/planning-engine.ts`) with Gemini 2.5/3.5 Flash and OpenAI GPT-4o abstractions.
-- **Prompts**: `director/v1`, `script/v1`, `chapter/v1`, `scene-planner/v1`, `scene-repair/v1`, `publishing-metadata/v1`.
-- **Verification**: Structured generation with schema validation and automated repair fallback.
+### 5. Real Google video generation is not complete
+- `GoogleVideoProvider` defaults to `gemini-omni-flash`, while the current Gemini model catalog uses a different current Omni model identifier.
+- The provider uses a video request flow that does not match the current documented Gemini/Veo long-running video generation flow.
+- `MediaCoordinator` checks async video status only once; if no video buffer is returned immediately it substitutes `Buffer.from('mock-mp4-video-stream')` and can persist that as a READY video asset.
 
-## Live Image Generation
-- **Provider**: `GeminiImageProvider` using Gemini Native Image generation with aspect ratio presets (`9:16`, `16:9`, `1:1`).
-- **Fallback**: `OpenAiImageProvider` (DALL-E 3) and `MockImageProvider` for offline verification.
-- **Output**: Direct image buffer ingestion with automatic upload to Cloudflare R2.
+### 6. Gemini image provider requires current-API validation/fix
+- The configured `gemini-3.1-flash-image` model identifier is current, but the implementation uses a legacy-style `models/{model}:predict` request shape rather than the current documented native-image interaction flow. No live call has verified this adapter.
 
-## Live Video Generation
-- **Provider**: `GoogleVideoProvider` with async generation submission and status polling.
-- **Fallback**: `MockVideoProvider` for offline test suites.
-- **Output**: H.264 video clips ingested into R2 storage with asset SHA-256 calculation.
+### 7. Production authentication/session boundary is not secure enough for release
+- `vf_session_user_id` is trusted directly as the authenticated user ID without a signed/encrypted server-side session proof.
+- The fallback Authorization path accepts an arbitrary `Bearer usr_*` identifier as authentication.
+- OAuth `state` is base64url JSON containing `userId`; comments describe HMAC protection, but the state is neither signed nor persisted/verified against a server-side nonce in the audited implementation.
 
-## Live Voice Generation
-- **Provider**: `ElevenLabsVoiceProvider` (`eleven_multilingual_v2`) with custom Arabic voice presets and timing mismatch detection.
-- **Fallback**: `MockVoiceProvider` for deterministic unit testing.
-- **Output**: MP3 audio stream saved to R2 with duration capture.
+### 8. Publishing can silently become mock behavior
+- `createPublishingProvider()` returns `MockPublishingProvider` in non-test environments when the corresponding OAuth client/app environment variable is missing.
+- This can produce a false-positive publishing path instead of failing closed in production.
 
-## Live R2
-- **Provider**: `R2StorageProvider` using `@aws-sdk/client-s3` compatible with Cloudflare R2.
-- **Key Determinism**: `video-factory/users/{userId}/projects/{projectId}/videos/{videoId}/...`
-- **Security**: Presigned read and upload URLs with configurable TTL (default 1–2 hours); private bucket storage.
+### 9. Existing tests are code-level/offline evidence, not a live Golden Path
+- The repository's Golden Path test explicitly uses `MockLlmProvider`, mock storage, `forceMock` publishing, and `forceMock` analytics.
+- Database tests validate schema objects/IDs and do not prove a live PostgreSQL migration/transaction cycle.
+- Render tests use mock storage and the simulated `RenderService` output described above.
+- The previous `69/69`, lint, typecheck, build, and 36-route claims remain historical results from 2026-08-20; they were not independently rerun during this repository-only audit.
+- No GitHub Actions workflow/check run was found for the audited commit.
 
-## Live Remotion Render
-- **Architecture**: Remotion 4.0 standalone worker inside `apps/render-worker`.
-- **Composition**: `MainVideoComposition` with `VideoScene`, `ImageScene`, `TextScene`, `MotionGraphicsScene`, `MixedScene`.
-- **Captions & Audio**: RTL Arabic typography with Cairo font, 18% safe bottom area, and ducked background audio.
-- **Output Specs**: H.264 MP4, AAC audio, 1080x1920 (9:16), 30 FPS, SHA-256 integrity validation.
+## External Integration State
 
-## YouTube
-- **Provider**: `YouTubePublishingProvider` (`packages/providers/src/publishing/youtube.ts`).
-- **Flow**: Google OAuth 2.0 (`https://www.googleapis.com/auth/youtube.upload`), resumable upload streaming from R2, Shorts classification, and `videos.list` status tracking.
-- **Launch Scope & Feature Flag**: `ENABLE_YOUTUBE=true`.
-- **Audit Note**: Unverified Google API projects are restricted to `private` uploads until Google OAuth app verification is completed.
+| Boundary | Implemented in code | Configured/live verified |
+| --- | --- | --- |
+| PostgreSQL | Yes | Not verified against a production instance in this audit |
+| n8n | Workflow JSONs exist | Import/activation/live execution not verified |
+| Gemini LLM | Adapter exists | Credentials/live request not verified |
+| Gemini Image | Adapter exists | Current API compatibility/live request not verified |
+| Google/Veo Video | Adapter exists but requires correction | Not live verified |
+| ElevenLabs | Adapter exists | Credentials/live request not verified |
+| Cloudflare R2 | Real S3-compatible adapter exists | Bucket/credentials/read-write not live verified |
+| Remotion | Composition/component code exists | Real MP4 rendering not implemented by current RenderService |
+| YouTube | Real provider code exists | OAuth/account/upload not live verified |
+| Instagram | Real provider code exists | OAuth/account/publish not live verified |
+| TikTok | Real provider code exists | OAuth/account/publish not live verified |
+| Analytics | Provider code exists | Live post-publication reconciliation not verified |
 
-## Instagram
-- **Provider**: `InstagramPublishingProvider` (`packages/providers/src/publishing/instagram.ts`).
-- **Flow**: Meta Graph API v22.0 Reels container creation with presigned R2 video URL, status polling, and `media_publish`.
-- **Launch Scope & Feature Flag**: `ENABLE_INSTAGRAM=true`.
-- **Audit Note**: Requires Instagram Professional / Business account linked to a Meta Facebook Page and Meta App Review for `instagram_content_publish`.
+## External Approval Boundaries
+- YouTube public publishing may require the Google/YouTube API project audit/verification depending on project status; live project status is unknown from the repository.
+- Instagram permissions/app review status is unknown from the repository.
+- TikTok `video.publish` approval/audit status is unknown from the repository; unaudited Direct Post clients are restricted by TikTok.
 
-## TikTok
-- **Provider**: `TikTokPublishingProvider` (`packages/providers/src/publishing/tiktok.ts`).
-- **Flow**: TikTok Content Posting API v2 with PKCE, Creator Info constraints query, and `FILE_UPLOAD` Direct Post chunk streaming.
-- **Launch Scope & Feature Flag**: `ENABLE_TIKTOK=true`.
-- **Audit Note**: Unaudited TikTok developer apps operate in sandbox/private mode until TikTok commercial review approval.
+## Documentation / Repository Notes
+- The connected repository currently resolves as `abudoxali/Video_Factory`, not the requested lowercase-hyphen literal `abudoxali/video-factory`.
+- No explicit stale GitHub URL/reference to `abudoxali/workflow` was found in the audited code search.
+- `README.md` is stale in places: it still describes the render worker as a future-phase boundary and lists an `infrastructure/nginx` directory that is not present in the current tree.
 
-## Analytics
-- **Providers**: `YouTubeAnalyticsProvider`, `InstagramInsightsProvider`, `TikTokAnalyticsProvider`.
-- **Metrics**: Captures `views`, `likes`, `comments`, `shares`, `watch_time_seconds`, `average_view_duration_seconds`.
-- **Accuracy Rule**: Unsupported metrics remain strictly `null` (no fabricated zeroes).
+## Current Release Gate
+Do **not** deploy as a production release yet. The next execution should first remove the false-positive production paths so that missing integrations fail closed and the Golden Path can only report success when real planning, media generation, rendering, storage, and publishing have actually occurred.
 
-## Authentication
-- **Session Boundary**: `apps/web/src/lib/session.ts` enforces strict authentication in `NODE_ENV === 'production'` without dev bypass.
-- **Ownership Verification**: All write and read queries verify `userId === resource.userId`. Mismatched or unauthenticated requests return `401 Unauthorized` or `403 Forbidden`.
-- **Rate Limiting**: `apps/web/src/lib/rate-limiter.ts` protects high-risk endpoints (`/api/social/oauth`, `/api/videos/[id]/publishing`).
+## Next Execution
+**Production Reality Gate — Part 1: make the production runtime fail-closed and make the real Golden Path executable rather than simulated.**
 
-## Production Docker
-- **Web Container**: Multi-stage `apps/web/Dockerfile` based on `node:20-alpine` with Next.js standalone output.
-- **Render Worker Container**: `apps/render-worker/Dockerfile` based on `node:20-bookworm-slim` equipped with Chromium, FFmpeg, and Arabic font packages (`fonts-noto-core`, `fonts-kacst`, `fonts-hosny-amiri`).
-- **Orchestration**: `docker-compose.production.yml` orchestrating `web`, `render-worker`, and `postgres` on an isolated network.
-
-## Security Audit
-- **Status**: PASS (0 leaked secrets, 0 hardcoded keys).
-- **Token Protection**: AES-256-GCM encryption at rest with `SOCIAL_TOKEN_ENCRYPTION_KEY`.
-- **Redaction**: Recursive `redactSensitiveObject` prevents token disclosure in API responses and console logs.
-- **Callback Auth**: Constant-time secret comparison via `crypto.timingSafeEqual`.
-
-## Tests
-- **Automated Test Runner**: Vitest (69 passed across 8 test suites):
-  - `packages/contracts` (14 tests) — Schemas, n8n workflows structure, publishing contracts, frame math.
-  - `packages/database` (2 tests) — Database tables, relations, indexes.
-  - `packages/providers` (31 tests) — AES-256-GCM encryption, YouTube/Instagram/TikTok providers, analytics, failure resilience, Golden Path pipeline.
-  - `apps/render-worker` (3 tests) — Manifest validation, Remotion render execution, SHA-256 computation, R2 upload.
-  - `apps/web` (19 tests) — Production auth boundaries, callbacks, media API, planning API, render API.
-- **Quality Gates**:
-  - `pnpm lint`: PASS (0 errors).
-  - `pnpm typecheck`: PASS (0 errors across all 7 workspace packages and apps).
-  - `pnpm test`: PASS (69/69 tests passing).
-  - `pnpm build`: PASS (36 Next.js routes compiled).
-  - `pnpm db:generate`: PASS (Migration `0004_rainy_beyonder.sql` clean).
-
-## External Approval Status
-1. **Google Cloud / YouTube Data API**: Requires OAuth Consent Screen verification for public uploads; private testing uploads supported immediately.
-2. **Meta for Developers / Instagram Graph API**: Requires App Review for `instagram_content_publish` and `pages_read_engagement`; development accounts supported immediately.
-3. **TikTok for Developers / Content Posting API**: Requires App Review for public posting; sandbox and private creator testing supported immediately.
-
-## Known Issues
-- None. All internal logic, schema definitions, provider adapters, error boundaries, and UI components are fully functional and pass all test gates.
-
-## Exact Remaining Work
-- Inject live production credentials (`GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `R2_*`, `GOOGLE_OAUTH_*`, `META_*`, `TIKTOK_*`) into `.env` upon deploying to the target production server and submit app review requests to Google, Meta, and TikTok for full public publishing access.
-
-## Last Verification
-2026-08-20 — Full release verification completed. All 69 tests passing, 0 lint errors, 0 type errors, production Next.js build compiled (36 routes), Docker configs verified, and Golden Path validated.
+The first implementation pass should focus only on the minimum blockers required to reach a truthful production run; no new product features, redesigns, providers, platforms, or unrelated refactors.
